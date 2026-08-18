@@ -1,0 +1,17 @@
+{
+  "name": "al-muhasib-accounting",
+  "version": "1.0.0",
+  "description": "نظام المحاسب - برنامج محاسبة مالي شامل (شركات، سوبر ماركت، مصانع، مخابر طبية) مع ضريبة القيمة المضافة السعودية",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2"
+  }
+}
