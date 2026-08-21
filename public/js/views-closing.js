@@ -26,6 +26,14 @@ const ClosingView = {
         this.$emit('refresh');
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.closing = false; }
+    },
+    exportYears() {
+      const rows = this.years.map(y => [
+        y.name, y.start_date, y.end_date,
+        y.status === 'open' ? 'مفتوحة' : 'مقفلة',
+        y.closed_at ? y.closed_at.slice(0, 10) : ''
+      ]);
+      this.exportCsv(`fiscal-years-${this.company.id}`, ['year', 'start', 'end', 'status', 'closed_at'], rows);
     }
   },
   computed: {
@@ -73,13 +81,16 @@ const ClosingView = {
             تاريخ بداية السنة الجديدة (اختياري):
             <input type="date" v-model="newYearDate" :placeholder="suggestedDate">
           </label>
-          <button class="btn btn-danger" @click="confirmClose = true" :disabled="closing">🔒 إقفال سنة {{ activeYear.name }} وترحيل الحسابات</button>
+          <button v-if="can('closing', 'edit')" class="btn btn-danger" @click="confirmClose = true" :disabled="closing">🔒 إقفال سنة {{ activeYear.name }} وترحيل الحسابات</button>
         </div>
       </div>
     </div>
 
     <div class="panel">
-      <div class="panel-header"><h3>السنوات المالية</h3></div>
+      <div class="panel-header">
+        <h3>السنوات المالية</h3>
+        <button v-if="can('closing', 'export')" class="btn btn-sm btn-ghost" @click="exportYears">⬇️ تصدير CSV</button>
+      </div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
@@ -187,6 +198,7 @@ const SettingsView = {
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
+    <div v-if="!can('settings', 'edit')" class="alert info">أنت تملك صلاحية العرض فقط لهذه النافذة — لا يمكنك تعديل البيانات أو إعدادات ZATCA.</div>
     <div class="panel" style="max-width:800px;">
       <div class="panel-header"><h3>بيانات الشركة والإعدادات</h3></div>
       <div class="panel-body">
@@ -212,7 +224,7 @@ const SettingsView = {
           <label>البريد الإلكتروني <input v-model.trim="form.email" dir="ltr"></label>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات' }}</button>
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات' }}</button>
         </div>
       </div>
     </div>
@@ -267,7 +279,7 @@ const SettingsView = {
         </div>
 
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? 'جارٍ الحفظ...' : 'حفظ إعدادات ZATCA' }}</button>
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? 'جارٍ الحفظ...' : 'حفظ إعدادات ZATCA' }}</button>
           <span class="muted" v-if="zatca && !zatca.csidSet">الرقم الضريبي للمنشأة يُقرأ من "بيانات الشركة" أعلاه.</span>
         </div>
       </div>

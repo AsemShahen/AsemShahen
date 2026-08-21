@@ -24,9 +24,29 @@ const DashboardView = {
       return ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
     }
   },
+  methods: {
+    exportData() {
+      const d = this.d;
+      if (!d) return;
+      const rows = [
+        ['صافي الدخل', this.fmt.num(d.stmt.netIncome)],
+        ['إجمالي المبيعات', this.fmt.num(d.sales)],
+        ['إجمالي المشتريات', this.fmt.num(d.purchases)],
+        ['النقدية', this.fmt.num(d.cash)],
+        ['البنك', this.fmt.num(d.bank)],
+        ['ذمم مدينة (عملاء)', this.fmt.num(d.receivables)],
+        ['ذمم دائنة (موردون)', this.fmt.num(d.payables)],
+        ['ضريبة القيمة المضافة', this.fmt.num(this.info.vat ? this.info.vat.netDue : 0)]
+      ];
+      this.exportCsv(`dashboard-${this.company.id}`, ['kpi', 'value'], rows);
+    }
+  },
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
+    <div class="flex" style="justify-content:flex-end;margin-bottom:12px;">
+      <button v-if="can('dashboard', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+    </div>
     <div v-if="!d" class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
 
     <template v-if="d">

@@ -5,12 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام المحاسب - برنامج المحاسبة المالي</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=4">
   <script src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
   <div id="app" v-cloak>
+    <!-- ==================== شاشة تسجيل الدخول ==================== -->
+    <div v-if="!authUser" class="login-screen">
+      <div class="login-card">
+        <div class="brand-logo">📊</div>
+        <h1>نظام المحاسب</h1>
+        <p class="login-sub">منظومة محاسبة مالية شاملة مع الفاتورة الإلكترونية السعودية (ZATCA)</p>
+        <div v-if="loginAlert" class="alert error" style="margin-top:14px;">{{ loginAlert }}</div>
+        <div class="login-fields">
+          <label>اسم المستخدم
+            <input v-model.trim="loginForm.username" dir="ltr" placeholder="admin" autocomplete="username">
+          </label>
+          <label>كلمة المرور
+            <input type="password" v-model="loginForm.password" dir="ltr" placeholder="••••••" autocomplete="current-password" @keyup.enter="doLogin">
+          </label>
+        </div>
+        <button class="btn btn-primary btn-lg login-btn" @click="doLogin" :disabled="!loginForm.username || !loginForm.password || loggingIn">
+          {{ loggingIn ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول' }}
+        </button>
+        <p class="login-hint">الحساب الافتراضي للمدير: admin / admin123</p>
+      </div>
+    </div>
+
+    <!-- ==================== بعد تسجيل الدخول ==================== -->
+    <template v-else>
     <!-- ==================== شاشة اختيار الشركة ==================== -->
     <div v-if="!activeCompany" class="company-screen">
       <div class="brand-banner">
@@ -37,7 +61,7 @@
           <p>لا توجد شركات بعد. ابدأ بإنشاء أول شركة:</p>
         </div>
 
-        <button class="btn btn-primary btn-lg" @click="openCreateCompany = true">+ إنشاء شركة جديدة</button>
+        <button v-if="authUser.role === 'admin'" class="btn btn-primary btn-lg" @click="openCreateCompany = true">+ إنشاء شركة جديدة</button>
       </div>
 
       <!-- مودال إنشاء شركة -->
@@ -111,7 +135,8 @@
 
         <div class="sidebar-footer">
           <div class="fy-badge">السنة المالية: <strong>{{ info.active_fiscal_year ? info.active_fiscal_year.name : '—' }}</strong></div>
-          <button class="btn btn-sm btn-primary" @click="navigate('closing')">🔒 إقفال السنة</button>
+          <button v-if="canWindow('closing', 'edit')" class="btn btn-sm btn-primary" @click="navigate('closing')">🔒 إقفال السنة</button>
+          <button class="btn btn-sm btn-ghost" @click="logout" style="margin-top:8px;color:var(--sidebar-text);border-color:rgba(255,255,255,.15);">🚪 تسجيل الخروج</button>
         </div>
       </aside>
 
@@ -119,6 +144,7 @@
         <header class="topbar">
           <h2>{{ currentNavLabel }}</h2>
           <div class="topbar-actions">
+            <span class="chip">👤 {{ authUser.username }}</span>
             <span class="chip">{{ info.business_type_label }}</span>
             <span class="chip">ضريبة: {{ info.settings.vat_rate || 15 }}%</span>
             <span class="chip" v-if="info.active_fiscal_year && info.active_fiscal_year.status === 'open'">سنة مفتوحة</span>
@@ -130,14 +156,45 @@
         </div>
       </main>
     </div>
+
+    <!-- ==================== نافذة معاينة ما قبل الطباعة ==================== -->
+    <div v-if="printStore.open" class="modal-overlay" @click.self="closePrintPreview">
+      <div class="modal print-modal">
+        <div class="print-area">
+          <h3>{{ printStore.title }}</h3>
+          <div class="muted mb-2">{{ printStore.sub }}</div>
+          <table class="preview-table">
+            <thead>
+              <tr><th v-for="(c, i) in printStore.cols" :key="i">{{ c }}</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in printStore.rows" :key="i">
+                <td v-for="(c, j) in r" :key="j">{{ c }}</td>
+              </tr>
+            </tbody>
+            <tfoot v-if="printStore.footer && printStore.footer.length">
+              <tr v-for="(f, i) in printStore.footer" :key="i">
+                <td :colspan="printStore.cols.length" class="preview-footer">{{ f }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="modal-actions no-print">
+          <button class="btn btn-ghost" @click="closePrintPreview">إغلاق</button>
+          <button class="btn btn-primary" @click="doPrint" v-if="canWindow(view, 'print')">🖨️ طباعة</button>
+        </div>
+      </div>
+    </div>
+    </template>
   </div>
 
-  <script src="/js/views-common.js"></script>
-  <script src="/js/views-dashboard.js"></script>
-  <script src="/js/views-accounts.js"></script>
-  <script src="/js/views-reports.js"></script>
-  <script src="/js/views-invoices.js"></script>
-  <script src="/js/views-closing.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/views-common.js?v=4"></script>
+  <script src="/js/views-dashboard.js?v=4"></script>
+  <script src="/js/views-accounts.js?v=4"></script>
+  <script src="/js/views-reports.js?v=4"></script>
+  <script src="/js/views-invoices.js?v=4"></script>
+  <script src="/js/views-closing.js?v=4"></script>
+  <script src="/js/views-users.js?v=4"></script>
+  <script src="/js/app.js?v=4"></script>
 </body>
 </html>

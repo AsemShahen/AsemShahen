@@ -13,6 +13,10 @@ const accounting = require('./lib/accounting');
 const { openCompanyDb } = require('./lib/company-db');
 const invoicesLib = require('./lib/invoices');
 const partiesLib = require('./lib/parties');
+const usersLib = require('./lib/users');
+
+// إنشاء حساب المدير الافتراضي: admin / admin123
+usersLib.ensureDefaultAdmin();
 
 function acct(db, code) {
   return db.prepare(`SELECT * FROM accounts WHERE code = ?`).get(code);

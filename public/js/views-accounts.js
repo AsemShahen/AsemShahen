@@ -47,6 +47,43 @@ const AccountsView = {
       const f = this.filter.trim();
       if (!f) return this.accounts;
       return this.accounts.filter(a => a.code.includes(f) || a.name.includes(f));
+    },
+    preview() {
+      const rows = this.filtered().map(a => [a.code, a.name, accountTypeLabels[a.type] || a.type, a.normal_side === 'debit' ? 'مدين' : 'دائن', this.fmt.num(a.balance) + ' ر.س', a.vat_applicable ? 'نعم' : 'لا']);
+      this.openPrintPreview({
+        title: 'المخطط المحاسبي',
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : '—'}`,
+        cols: ['الرمز', 'اسم الحساب', 'التصنيف', 'طبيعة الرصيد', 'الرصيد', 'ضريبة'],
+        rows
+      });
+    },
+    exportData() {
+      const rows = this.filtered().map(a => [a.code, a.name, accountTypeLabels[a.type] || a.type, a.normal_side === 'debit' ? 'مدين' : 'دائن', this.fmt.num(a.balance), a.vat_applicable ? 'نعم' : 'لا']);
+      this.exportCsv(`accounts-${this.company.id}`, ['code', 'name', 'type', 'side', 'balance', 'vat'], rows);
+    },
+    importData() {
+      this.importJsonFile(async (data) => {
+        const items = Array.isArray(data) ? data : (data.accounts || []);
+        if (!items.length) return this.toast('لا توجد حسابات في الملف', 'error');
+        let ok = 0, fail = 0;
+        for (const it of items) {
+          try {
+            await this.api(`/api/companies/${this.company.id}/accounts`, {
+              method: 'POST',
+              body: {
+                code: String(it.code), name: String(it.name || ''), type: it.type || 'asset',
+                category: it.category || 'other', parent_code: it.parent_code,
+                normal_side: it.normal_side,
+                vat_applicable: it.vat_applicable !== undefined ? it.vat_applicable : 1,
+                opening_balance: it.opening_balance || 0
+              }
+            });
+            ok++;
+          } catch (e) { fail++; }
+        }
+        this.toast(`تم استيراد ${ok} حساب، فشل ${fail}`);
+        await this.load();
+      });
     }
   },
   computed: {
@@ -60,9 +97,15 @@ const AccountsView = {
 
     <div class="flex-between flex-wrap mb-2">
       <div class="flex">
-        <input placeholder="بحث برقم الحساب أو الاسم..." v-model="filter" style="min-width:260px;">
+        <input v-if="can('accounts', 'search')" placeholder="بحث برقم الحساب أو الاسم..." v-model="filter" style="min-width:260px;">
       </div>
-      <button class="btn btn-primary" @click="openCreate">+ حساب جديد</button>
+      <div class="flex flex-wrap">
+        <button v-if="can('accounts', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+        <button v-if="can('accounts', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+        <button v-if="can('accounts', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+        <button v-if="can('accounts', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
+        <button v-if="can('accounts', 'add')" class="btn btn-primary" @click="openCreate">+ حساب جديد</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -84,7 +127,7 @@ const AccountsView = {
                 <td class="num" :class="a.balance < 0 ? 'neg' : ''">{{ fmt.money(a.balance) }}</td>
                 <td>{{ a.vat_applicable ? '✓' : '—' }}</td>
                 <td>
-                  <button v-if="!a.is_system" class="btn btn-sm btn-ghost" @click="openEdit(a)">تعديل</button>
+                  <button v-if="!a.is_system && can('accounts', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(a)">تعديل</button>
                 </td>
               </tr>
               <tr v-if="!filtered().length"><td colspan="7" class="muted">لا توجد حسابات</td></tr>
@@ -149,7 +192,7 @@ const JournalView = {
   mixins: [CommonMixin],
   data() {
     return {
-      entries: [], accounts: [], loading: true, alert: null,
+      entries: [], accounts: [], loading: true, alert: null, filter: '',
       showModal: false, saving: false,
       form: { date: new Date().toISOString().slice(0, 10), description: '', lines: [] }
     };
@@ -212,6 +255,59 @@ const JournalView = {
       let d = 0, c = 0;
       for (const l of entry.lines) { d += Number(l.debit); c += Number(l.credit); }
       return Math.abs(d - c) < 0.01;
+    },
+    filteredEntries() {
+      const f = this.filter.trim();
+      if (!f) return this.entries;
+      return this.entries.filter(e =>
+        e.entry_no.includes(f) || e.description.includes(f) ||
+        e.lines.some(l => (l.code || '').includes(f) || (l.account_name || l.name || '').includes(f)));
+    },
+    preview() {
+      const rows = this.filteredEntries().map(e => [
+        e.entry_no, e.date, e.description,
+        this.fmt.num(e.lines.reduce((s, l) => s + l.debit, 0)),
+        this.fmt.num(e.lines.reduce((s, l) => s + l.credit, 0)),
+        e.is_closing ? 'إقفال' : (e.is_opening ? 'افتتاحي' : 'يومي')
+      ]);
+      this.openPrintPreview({
+        title: 'قيود اليومية',
+        sub: `${this.company.name} - السنة المالية الحالية`,
+        cols: ['رقم القيد', 'التاريخ', 'البيان', 'مدين', 'دائن', 'النوع'],
+        rows
+      });
+    },
+    exportData() {
+      const rows = this.filteredEntries().map(e => [
+        e.entry_no, e.date, e.description,
+        this.fmt.num(e.lines.reduce((s, l) => s + l.debit, 0)),
+        this.fmt.num(e.lines.reduce((s, l) => s + l.credit, 0)),
+        e.is_closing ? 'إقفال' : (e.is_opening ? 'افتتاحي' : 'يومي')
+      ]);
+      this.exportCsv(`journal-${this.company.id}`, ['entry_no', 'date', 'description', 'debit', 'credit', 'type'], rows);
+    },
+    importData() {
+      this.importJsonFile(async (data) => {
+        const items = Array.isArray(data) ? data : (data.entries || []);
+        if (!items.length) return this.toast('لا توجد قيود في الملف', 'error');
+        let ok = 0, fail = 0;
+        for (const it of items) {
+          try {
+            const lines = (it.lines || []).map(l => {
+              const acc = this.accounts.find(a => a.code === String(l.account_code));
+              return { account_id: acc ? acc.id : null, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, detail: l.detail || '' };
+            });
+            if (lines.some(l => !l.account_id)) throw new Error('رمز حساب غير موجود');
+            await this.api(`/api/companies/${this.company.id}/journal`, {
+              method: 'POST',
+              body: { date: it.date, description: it.description || '', lines }
+            });
+            ok++;
+          } catch (e) { fail++; }
+        }
+        this.toast(`تم استيراد ${ok} قيد، فشل ${fail}`);
+        await this.load();
+      });
     }
   },
   computed: {
@@ -224,9 +320,18 @@ const JournalView = {
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
-    <div class="flex-between mb-2">
-      <p class="muted">عدد القيود: {{ entries.length }}</p>
-      <button class="btn btn-primary" @click="openCreate">+ قيد جديد</button>
+    <div class="flex-between flex-wrap mb-2">
+      <div class="flex flex-wrap">
+        <input v-if="can('journal', 'search')" placeholder="بحث برقم القيد أو البيان أو الحساب..." v-model="filter" style="min-width:260px;">
+        <p class="muted">عدد القيود: {{ entries.length }}</p>
+      </div>
+      <div class="flex flex-wrap">
+        <button v-if="can('journal', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+        <button v-if="can('journal', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+        <button v-if="can('journal', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+        <button v-if="can('journal', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
+        <button v-if="can('journal', 'add')" class="btn btn-primary" @click="openCreate">+ قيد جديد</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -238,14 +343,14 @@ const JournalView = {
               <tr><th>رقم القيد</th><th>التاريخ</th><th>البيان</th><th>الحسابات</th><th>مدين</th><th>دائن</th><th>النوع</th><th></th></tr>
             </thead>
             <tbody>
-              <template v-for="e in entries" :key="e.id">
+              <template v-for="e in filteredEntries()" :key="e.id">
                 <tr :style="e.is_closing ? 'background:#fff8e6;' : (e.is_opening ? 'background:#e9f5ff;' : '')">
                   <td class="monospace"><strong>{{ e.entry_no }}</strong></td>
                   <td>{{ fmt.date(e.date) }}</td>
                   <td style="white-space:normal;max-width:260px;">{{ e.description }}</td>
                   <td style="max-width:220px;white-space:normal;">
                     <div v-for="l in e.lines" :key="l.id" style="font-size:12px;">
-                      <span class="muted">{{ l.code }}</span> {{ l.name }}
+                      <span class="muted">{{ l.code }}</span> {{ l.account_name || l.name }}
                     </div>
                   </td>
                   <td class="num">{{ fmt.num(e.lines.reduce((s,l)=>s+l.debit,0)) }}</td>
@@ -256,7 +361,7 @@ const JournalView = {
                     </span>
                   </td>
                   <td>
-                    <button v-if="!e.is_closing && !e.is_opening" class="btn btn-sm btn-ghost" @click="del(e)">حذف</button>
+                    <button v-if="!e.is_closing && !e.is_opening && can('journal', 'delete')" class="btn btn-sm btn-ghost" @click="del(e)">حذف</button>
                   </td>
                 </tr>
               </template>
@@ -330,6 +435,29 @@ const LedgerView = {
       try {
         this.ledger = await this.api(`/api/companies/${this.company.id}/ledger/${this.accountId}`);
       } catch (e) { this.toast(e.message, 'error'); }
+    },
+    previewLedger() {
+      if (!this.ledger) return;
+      const rows = this.ledger.lines.map((l, i) => [
+        l.date, l.entry_no, l.detail || l.description,
+        l.debit ? this.fmt.num(l.debit) : '—',
+        l.credit ? this.fmt.num(l.credit) : '—',
+        this.fmt.num(this.runningTotals[i])
+      ]);
+      this.openPrintPreview({
+        title: `دفتر الأستاذ - ${this.ledger.account.code} ${this.ledger.account.name}`,
+        sub: `${this.company.name} - رصيد الحساب: ${this.fmt.money(this.ledger.balance.balance)}`,
+        cols: ['التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن', 'الرصيد'],
+        rows
+      });
+    },
+    exportLedger() {
+      if (!this.ledger) return;
+      const rows = this.ledger.lines.map((l, i) => [
+        l.date, l.entry_no, l.detail || l.description,
+        this.fmt.num(l.debit), this.fmt.num(l.credit), this.fmt.num(this.runningTotals[i])
+      ]);
+      this.exportCsv(`ledger-${this.ledger.account.code}-${this.company.id}`, ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'], rows);
     }
   },
   computed: {
@@ -363,7 +491,12 @@ const LedgerView = {
     <div v-if="ledger" class="panel">
       <div class="panel-header">
         <h3>{{ ledger.account.code }} - {{ ledger.account.name }}</h3>
-        <span class="chip">الرصيد الافتتاحي: {{ fmt.money(ledger.balance.balance - ledger.lines.reduce((s,l)=>s+(ledger.account.normal_side==='credit'?Number(l.credit)-Number(l.debit):Number(l.debit)-Number(l.credit)),0)) }}</span>
+        <div class="flex flex-wrap">
+          <span class="chip">الرصيد الافتتاحي: {{ fmt.money(ledger.balance.balance - ledger.lines.reduce((s,l)=>s+(ledger.account.normal_side==='credit'?Number(l.credit)-Number(l.debit):Number(l.debit)-Number(l.credit)),0)) }}</span>
+          <button v-if="can('ledger', 'print_preview')" class="btn btn-sm btn-ghost" @click="previewLedger">👁️ معاينة قبل الطباعة</button>
+          <button v-if="can('ledger', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+          <button v-if="can('ledger', 'export')" class="btn btn-sm btn-ghost" @click="exportLedger">⬇️ تصدير CSV</button>
+        </div>
       </div>
       <div class="panel-body pad-0">
         <div class="table-wrap">

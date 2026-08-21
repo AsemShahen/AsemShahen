@@ -13,7 +13,8 @@ const NAV_ITEMS = [
   { key: 'invoices-purchase', label: 'فواتير الشراء', icon: '📦' },
   { key: 'parties', label: 'العملاء والموردون', icon: '👥' },
   { key: 'closing', label: 'الإقفال السنوي', icon: '🔒' },
-  { key: 'settings', label: 'الإعدادات', icon: '⚙️' }
+  { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
+  { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' }
 ];
 
 const { createApp } = Vue;
@@ -21,6 +22,10 @@ const { createApp } = Vue;
 const App = {
   data() {
     return {
+      authUser: null,
+      loginForm: { username: '', password: '' },
+      loginAlert: '',
+      loggingIn: false,
       companies: [],
       activeCompany: null,
       info: { settings: {}, active_fiscal_year: null },
@@ -48,7 +53,8 @@ const App = {
         'invoices-purchase': InvoicesView,
         'parties': PartiesView,
         'closing': ClosingView,
-        'settings': SettingsView
+        'settings': SettingsView,
+        'users': UsersView
       };
       return map[this.view] || DashboardView;
     },
@@ -61,11 +67,68 @@ const App = {
       const item = NAV_ITEMS.find(i => i.key === this.view);
       return item ? item.label : '';
     },
-    navItems() { return NAV_ITEMS; }
+    navItems() {
+      return NAV_ITEMS.filter(i => {
+        if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
+        return can(i.key, 'view');
+      });
+    },
+    printStore() { return printStore; }
   },
   methods: {
     typeIcon, typeLabel,
+    canWindow(windowKey, action) { return can(windowKey, action); },
+    async api(path, opts = {}) {
+      const r = await apiFetch(path, opts);
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'خطأ في الطلب');
+      return data;
+    },
+    async doLogin() {
+      this.loggingIn = true;
+      this.loginAlert = '';
+      try {
+        const r = await apiFetch('/api/login', {
+          method: 'POST',
+          body: JSON.stringify({ username: this.loginForm.username, password: this.loginForm.password })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'فشل تسجيل الدخول');
+        localStorage.setItem('muhasib_token', data.token);
+        setAuthUser(data.user);
+        this.authUser = data.user;
+        await this.loadCompanies();
+        await this.loadBusinessTypes();
+        const savedId = localStorage.getItem('muhasib_company');
+        if (savedId && this.companies.some(c => String(c.id) === savedId)) {
+          this.activeCompany = this.companies.find(c => String(c.id) === savedId);
+          this.view = 'dashboard';
+          await this.loadInfo();
+        }
+      } catch (e) {
+        this.loginAlert = e.message;
+      } finally {
+        this.loggingIn = false;
+      }
+    },
+    async logout() {
+      try {
+        await apiFetch('/api/logout', { method: 'POST' });
+      } catch (e) { /* تجاهل */ }
+      localStorage.removeItem('muhasib_token');
+      localStorage.removeItem('muhasib_company');
+      setAuthUser(null);
+      this.authUser = null;
+      this.activeCompany = null;
+      this.view = 'dashboard';
+      this.loginForm = { username: '', password: '' };
+    },
     navigate(view) { this.view = view; },
+    openPrintPreview,
+    closePrintPreview,
+    doPrint() {
+      setTimeout(() => { try { window.print(); } catch (e) {} }, 100);
+    },
     goDashboard() { this.view = 'dashboard'; },
     backToCompanies() {
       this.activeCompany = null;
@@ -81,13 +144,14 @@ const App = {
     },
     async loadCompanies() {
       try {
-        const r = await fetch('/api/companies');
-        this.companies = await r.json();
+        const r = await apiFetch('/api/companies');
+        const d = await r.json();
+        this.companies = d.companies || [];
       } catch (e) { console.error(e); }
     },
     async loadBusinessTypes() {
       try {
-        const r = await fetch('/api/company-types');
+        const r = await apiFetch('/api/company-types');
         const d = await r.json();
         this.businessTypes = d.types || [];
       } catch (e) { console.error(e); }
@@ -95,13 +159,13 @@ const App = {
     async loadInfo() {
       if (!this.activeCompany) return;
       try {
-        const r = await fetch(`/api/companies/${this.activeCompany.id}/info`);
+        const r = await apiFetch(`/api/companies/${this.activeCompany.id}/info`);
         this.info = await r.json();
       } catch (e) { console.error(e); }
     },
     async createCompany() {
       try {
-        const r = await fetch('/api/companies', {
+        const r = await apiFetch('/api/companies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.newCompany)
@@ -116,6 +180,24 @@ const App = {
     }
   },
   async created() {
+    const token = localStorage.getItem('muhasib_token');
+    if (token) {
+      try {
+        const me = await this.api('/api/me');
+        setAuthUser(me.user);
+        this.authUser = me.user;
+      } catch (e) {
+        localStorage.removeItem('muhasib_token');
+      }
+    }
+    window.addEventListener('muhasib-auth-expired', () => {
+      localStorage.removeItem('muhasib_token');
+      localStorage.removeItem('muhasib_company');
+      setAuthUser(null);
+      this.authUser = null;
+      this.activeCompany = null;
+    });
+    if (!this.authUser) return;
     await Promise.all([this.loadCompanies(), this.loadBusinessTypes()]);
     const savedId = localStorage.getItem('muhasib_company');
     if (savedId && this.companies.some(c => String(c.id) === savedId)) {

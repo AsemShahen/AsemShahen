@@ -80,6 +80,88 @@ const accountCategoryLabels = {
   admin: 'مصاريف إدارية وعمومية'
 };
 
+// ==================== المستخدم الحالي والصلاحيات ====================
+let _authUser = null;
+function setAuthUser(u) { _authUser = u; }
+function getAuthUser() { return _authUser; }
+
+function can(windowKey, action) {
+  const u = getAuthUser();
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  return !!(u.permissions && u.permissions[windowKey] && u.permissions[windowKey][action]);
+}
+
+// ==================== طلب واجهة برمجية مع المصادقة ====================
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  let body = opts.body;
+  if (body !== undefined && body !== null && typeof body === 'object'
+    && !(typeof Blob !== 'undefined' && body instanceof Blob)
+    && !(typeof FormData !== 'undefined' && body instanceof FormData)) {
+    body = JSON.stringify(body);
+  }
+  const token = localStorage.getItem('muhasib_token');
+  if (token) headers['x-auth-token'] = token;
+  const r = await fetch(path, { ...opts, body, headers });
+  if (r.status === 401) window.dispatchEvent(new Event('muhasib-auth-expired'));
+  return r;
+}
+
+// ==================== المعاينة والطباعة ====================
+const printStore = Vue.reactive({ open: false, title: '', sub: '', cols: [], rows: [], footer: [] });
+
+function openPrintPreview(opts) {
+  printStore.title = opts.title || '';
+  printStore.sub = opts.sub || '';
+  printStore.cols = opts.cols || [];
+  printStore.rows = opts.rows || [];
+  printStore.footer = opts.footer || [];
+  printStore.open = true;
+}
+
+function closePrintPreview() { printStore.open = false; }
+
+// ==================== تصدير واستيراد ====================
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCsv(filename, cols, rows) {
+  const esc = v => '"' + String(v === null || v === undefined ? '' : v).replace(/"/g, '""') + '"';
+  const csv = [cols.map(esc).join(',')]
+    .concat(rows.map(r => r.map(esc).join(',')))
+    .join('\r\n');
+  downloadFile(filename + '.csv', '\uFEFF' + csv, 'text/csv;charset=utf-8');
+}
+
+function exportJson(filename, data) {
+  downloadFile(filename + '.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+function importJsonFile(onData) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const f = input.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { onData(JSON.parse(reader.result)); }
+      catch (e) { alert('ملف JSON غير صالح'); }
+    };
+    reader.readAsText(f);
+  };
+  input.click();
+}
+
 // تحميل بيانات الشركة
 async function loadInfo(company) {
   const r = await fetch(`/api/companies/${company.id}/info`);
@@ -98,15 +180,12 @@ const CommonMixin = {
     typeLabel() { return typeLabel; },
     accountTypeLabels() { return accountTypeLabels; },
     accountCategoryLabels() { return accountCategoryLabels; },
-    printReport() { return printReport; }
+    can() { return can; },
+    printStore() { return printStore; }
   },
   methods: {
     async api(path, opts = {}) {
-      const r = await fetch(path, {
-        method: opts.method || 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        body: opts.body ? JSON.stringify(opts.body) : undefined
-      });
+      const r = await apiFetch(path, opts);
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || 'خطأ في الطلب');
       return data;
@@ -115,6 +194,19 @@ const CommonMixin = {
       this.alert = { type, message };
       clearTimeout(this._toastTimer);
       this._toastTimer = setTimeout(() => (this.alert = null), 4000);
-    }
+    },
+    openPrintPreview,
+    closePrintPreview,
+    doPrint() {
+      if (!this.printStore.open) {
+        const preview = typeof this.preview === 'function' ? this.preview
+          : (typeof this.previewLedger === 'function' ? this.previewLedger : null);
+        if (preview) preview.call(this);
+      }
+      setTimeout(() => { try { window.print(); } catch (e) {} }, 100);
+    },
+    exportCsv,
+    exportJson,
+    importJsonFile
   }
 };

@@ -1,6 +1,5 @@
 'use strict';
 
-function printReport() { window.print(); }
 
 // ==================== ميزان المراجعة ====================
 const TrialBalanceView = {
@@ -17,14 +16,32 @@ const TrialBalanceView = {
       return this.tb ? this.tb.items.filter(i => !i.is_header && (i.debit > 0 || i.credit > 0)) : [];
     }
   },
+  methods: {
+    preview() {
+      const rows = this.rows.map(i => [i.code, i.name, i.debit ? this.fmt.num(i.debit) : '—', i.credit ? this.fmt.num(i.credit) : '—']);
+      this.openPrintPreview({
+        title: 'ميزان المراجعة',
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
+        cols: ['الرمز', 'اسم الحساب', 'مدين', 'دائن'],
+        rows,
+        footer: this.rows.length ? [`المجموع: مدين ${this.fmt.money(this.tb.totals.debit)} / دائن ${this.fmt.money(this.tb.totals.credit)}`] : []
+      });
+    },
+    exportData() {
+      const rows = this.rows.map(i => [i.code, i.name, this.fmt.num(i.debit), this.fmt.num(i.credit)]);
+      this.exportCsv(`trial-balance-${this.company.id}`, ['code', 'name', 'debit', 'credit'], rows);
+    }
+  },
   template: `
   <div class="statement-box">
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
     <div class="panel">
       <div class="panel-header">
         <h3>ميزان المراجعة</h3>
-        <div class="flex">
-          <button class="btn btn-sm btn-ghost" @click="printReport">🖨️ طباعة</button>
+        <div class="flex flex-wrap">
+          <button v-if="can('trial-balance', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+          <button v-if="can('trial-balance', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+          <button v-if="can('trial-balance', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
         </div>
       </div>
       <div class="panel-body pad-0">
@@ -71,6 +88,26 @@ const IncomeStatementView = {
     revRows() { return this.s ? this.s.revenues.filter(r => Math.abs(r.amount) > 0.01) : []; },
     expenseRows() { return this.s ? this.s.expenses.filter(e => Math.abs(e.amount) > 0.01) : []; }
   },
+  methods: {
+    preview() {
+      const rows = [];
+      for (const r of this.revRows) rows.push([r.code + ' - ' + r.name, this.fmt.money(r.amount)]);
+      for (const e of this.expenseRows) rows.push([e.code + ' - ' + e.name, this.fmt.money(e.amount)]);
+      this.openPrintPreview({
+        title: 'قائمة الدخل',
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
+        cols: ['الحساب', 'المبلغ'],
+        rows,
+        footer: this.s ? [`إجمالي الإيرادات: ${this.fmt.money(this.s.revenueTotal)}`, `إجمالي المصروفات: ${this.fmt.money(this.s.expenseTotal)}`, `صافي الدخل / (الخسارة): ${this.fmt.money(this.s.netIncome)}`] : []
+      });
+    },
+    exportData() {
+      const rows = [];
+      for (const r of this.revRows) rows.push([r.code + ' - ' + r.name, this.fmt.num(r.amount), 'إيراد']);
+      for (const e of this.expenseRows) rows.push([e.code + ' - ' + e.name, this.fmt.num(e.amount), 'مصروف']);
+      this.exportCsv(`income-statement-${this.company.id}`, ['account', 'amount', 'type'], rows);
+    }
+  },
   template: `
   <div class="statement-box">
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
@@ -113,7 +150,11 @@ const IncomeStatementView = {
         </div>
       </div>
     </div>
-    <div class="flex" style="justify-content:flex-end;"><button class="btn btn-sm btn-ghost" @click="printReport">🖨️ طباعة</button></div>
+    <div class="flex flex-wrap" style="justify-content:flex-end;">
+      <button v-if="can('income-statement', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+      <button v-if="can('income-statement', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+      <button v-if="can('income-statement', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+    </div>
   </div>
   `
 };
@@ -132,6 +173,30 @@ const BalanceSheetView = {
     assetsRows() { return this.s ? this.s.assets.filter(a => Math.abs(a.amount) > 0.01) : []; },
     liabRows() { return this.s ? this.s.liabilities.filter(a => Math.abs(a.amount) > 0.01) : []; },
     equityRows() { return this.s ? this.s.equity.filter(a => Math.abs(a.amount) > 0.01) : []; }
+  },
+  methods: {
+    preview() {
+      const rows = [];
+      for (const a of this.assetsRows) rows.push([a.code + ' - ' + a.name, this.fmt.money(a.amount)]);
+      rows.push(['إجمالي الأصول', this.fmt.money(this.s ? this.s.assetTotal : 0)]);
+      for (const l of this.liabRows) rows.push([l.code + ' - ' + l.name, this.fmt.money(l.amount)]);
+      rows.push(['إجمالي الخصوم', this.fmt.money(this.s ? this.s.liabilityTotal : 0)]);
+      for (const e of this.equityRows) rows.push([e.code + ' - ' + e.name, this.fmt.money(e.amount)]);
+      rows.push(['إجمالي حقوق الملكية', this.fmt.money(this.s ? this.s.equityTotal : 0)]);
+      this.openPrintPreview({
+        title: 'الميزانية العمومية',
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
+        cols: ['البند', 'المبلغ'],
+        rows
+      });
+    },
+    exportData() {
+      const rows = [];
+      for (const a of this.assetsRows) rows.push([a.code + ' - ' + a.name, this.fmt.num(a.amount), 'أصل']);
+      for (const l of this.liabRows) rows.push([l.code + ' - ' + l.name, this.fmt.num(l.amount), 'خصم']);
+      for (const e of this.equityRows) rows.push([e.code + ' - ' + e.name, this.fmt.num(e.amount), 'حقوق ملكية']);
+      this.exportCsv(`balance-sheet-${this.company.id}`, ['item', 'amount', 'section'], rows);
+    }
   },
   template: `
   <div class="statement-box">
@@ -192,7 +257,11 @@ const BalanceSheetView = {
         </div>
       </div>
     </div>
-    <div class="flex" style="justify-content:flex-end;"><button class="btn btn-sm btn-ghost" @click="printReport">🖨️ طباعة</button></div>
+    <div class="flex flex-wrap" style="justify-content:flex-end;">
+      <button v-if="can('balance-sheet', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+      <button v-if="can('balance-sheet', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+      <button v-if="can('balance-sheet', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+    </div>
   </div>
   `
 };
@@ -206,6 +275,33 @@ const VatReportView = {
     try { this.vat = await this.api(`/api/companies/${this.company.id}/vat-report`); }
     catch (e) { this.toast(e.message, 'error'); }
     finally { this.loading = false; }
+  },
+  methods: {
+    preview() {
+      const rows = (this.vat && this.vat.details ? this.vat.details : []).map(d => [
+        d.date, d.entry_no, d.description, d.code + ' - ' + d.account_name,
+        d.vat_type === 'output' ? 'ضريبة مبيعات' : 'ضريبة مشتريات',
+        this.fmt.money(d.vat_amount)
+      ]);
+      this.openPrintPreview({
+        title: 'تقرير الضريبة (VAT)',
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
+        cols: ['التاريخ', 'رقم القيد', 'البيان', 'الحساب', 'النوع', 'مبلغ الضريبة'],
+        rows,
+        footer: this.vat ? [
+          `ضريبة المبيعات (خرج): ${this.fmt.money(this.vat.output)}`,
+          `ضريبة المشتريات (دخل): ${this.fmt.money(this.vat.input)}`,
+          `صافي الضريبة المستحقة للهيئة: ${this.fmt.money(this.vat.netDue)}`
+        ] : []
+      });
+    },
+    exportData() {
+      const rows = (this.vat && this.vat.details ? this.vat.details : []).map(d => [
+        d.date, d.entry_no, d.description, d.code + ' - ' + d.account_name,
+        d.vat_type === 'output' ? 'output' : 'input', this.fmt.num(d.vat_amount)
+      ]);
+      this.exportCsv(`vat-report-${this.company.id}`, ['date', 'entry_no', 'description', 'account', 'type', 'amount'], rows);
+    }
   },
   template: `
   <div>
@@ -255,7 +351,11 @@ const VatReportView = {
         </div>
       </div>
     </div>
-    <div class="flex" style="justify-content:flex-end;"><button class="btn btn-sm btn-ghost" @click="printReport">🖨️ طباعة</button></div>
+    <div class="flex flex-wrap" style="justify-content:flex-end;">
+      <button v-if="can('vat', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+      <button v-if="can('vat', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+      <button v-if="can('vat', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+    </div>
   </div>
   `
 };

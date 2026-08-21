@@ -7,7 +7,7 @@ const InvoicesView = {
   props: { kind: { type: String, required: true } },
   data() {
     return {
-      invoices: [], parties: [], methods: [], loading: true, alert: null,
+      invoices: [], parties: [], methods: [], loading: true, alert: null, filter: '',
       showModal: false, saving: false, payModal: null, paying: false,
       detail: null, qrUrl: '', detailLoading: false,
       form: {}
@@ -17,7 +17,16 @@ const InvoicesView = {
   computed: {
     isSale() { return this.kind === 'sale'; },
     title() { return this.isSale ? 'فواتير البيع' : 'فواتير الشراء'; },
-    partyType() { return this.isSale ? 'customer' : 'supplier'; }
+    partyType() { return this.isSale ? 'customer' : 'supplier'; },
+    win() { return this.isSale ? 'invoices-sale' : 'invoices-purchase'; },
+    filteredInvoices() {
+      const f = this.filter.trim();
+      if (!f) return this.invoices;
+      return this.invoices.filter(i =>
+        i.invoice_no.includes(f) ||
+        (i.party && i.party.name.includes(f)) ||
+        (i.party && i.party.tax_id && i.party.tax_id.includes(f)));
+    }
   },
   methods: {
     async load() {
@@ -119,15 +128,85 @@ const InvoicesView = {
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.detailLoading = false; }
+    },
+    preview() {
+      const rows = this.filteredInvoices.map(i => [
+        i.invoice_no, i.party ? i.party.name : '—', i.date,
+        this.fmt.money(i.total), this.fmt.money(i.vat),
+        this.fmt.payMethod(i.payment_method, this.methods),
+        this.fmt.money(i.paid_amount), this.fmt.invStatus(i.status).t
+      ]);
+      this.openPrintPreview({
+        title: this.title,
+        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
+        cols: ['رقم الفاتورة', 'الطرف', 'التاريخ', 'الإجمالي', 'الضريبة', 'طريقة الدفع', 'المدفوع', 'الحالة'],
+        rows
+      });
+    },
+    exportData() {
+      const rows = this.filteredInvoices.map(i => [
+        i.invoice_no, i.party ? i.party.name : '', i.date,
+        this.fmt.num(i.total), this.fmt.num(i.vat), i.payment_method,
+        this.fmt.num(i.paid_amount), i.status
+      ]);
+      this.exportCsv(`invoices-${this.kind}-${this.company.id}`, ['invoice_no', 'party', 'date', 'total', 'vat', 'payment_method', 'paid', 'status'], rows);
+    },
+    importData() {
+      this.importJsonFile(async (data) => {
+        const items = Array.isArray(data) ? data : (data.invoices || []);
+        if (!items.length) return this.toast('لا توجد فواتير في الملف', 'error');
+        let ok = 0, fail = 0;
+        for (const it of items) {
+          try {
+            let partyId = null;
+            if (it.party_name) {
+              const p = this.parties.find(x => x.name === it.party_name);
+              if (!p) throw new Error('طرف غير موجود: ' + it.party_name);
+              partyId = p.id;
+            }
+            await this.api(`/api/companies/${this.company.id}/invoices`, {
+              method: 'POST',
+              body: {
+                kind: it.kind || this.kind,
+                party_id: partyId,
+                date: it.date,
+                vat_rate: Number(it.vat_rate) || Number(this.info.settings.vat_rate) || 15,
+                discount: Number(it.discount) || 0,
+                payment_method: it.payment_method || 'cash',
+                paid_amount: it.paid_amount !== undefined ? Number(it.paid_amount) : undefined,
+                notes: it.notes || '',
+                lines: (it.lines || []).map(l => ({
+                  description: l.description,
+                  qty: Number(l.qty) || 1,
+                  unit_price: Number(l.unit_price) || 0,
+                  discount: Number(l.discount) || 0
+                }))
+              }
+            });
+            ok++;
+          } catch (e) { fail++; }
+        }
+        this.toast(`تم استيراد ${ok} فاتورة، فشل ${fail}`);
+        await this.load();
+      });
     }
   },
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
-    <div class="flex-between mb-2">
-      <p class="muted">عدد الفواتير: {{ invoices.length }}</p>
-      <button class="btn btn-primary" @click="openCreate">+ فاتورة {{ isSale ? 'بيع' : 'شراء' }} جديدة</button>
+    <div class="flex-between flex-wrap mb-2">
+      <div class="flex flex-wrap">
+        <input v-if="can(win, 'search')" placeholder="بحث برقم الفاتورة أو الطرف أو الرقم الضريبي..." v-model="filter" style="min-width:260px;">
+        <p class="muted">عدد الفواتير: {{ invoices.length }}</p>
+      </div>
+      <div class="flex flex-wrap">
+        <button v-if="can(win, 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+        <button v-if="can(win, 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+        <button v-if="can(win, 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+        <button v-if="can(win, 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
+        <button v-if="can(win, 'add')" class="btn btn-primary" @click="openCreate">+ فاتورة {{ isSale ? 'بيع' : 'شراء' }} جديدة</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -143,7 +222,7 @@ const InvoicesView = {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="i in invoices" :key="i.id">
+              <tr v-for="i in filteredInvoices" :key="i.id">
                 <td class="monospace"><strong>{{ i.invoice_no }}</strong></td>
                 <td>{{ i.party ? i.party.name : '—' }}</td>
                 <td>{{ fmt.date(i.date) }}</td>
@@ -156,7 +235,7 @@ const InvoicesView = {
                   <span class="badge" :class="fmt.zatcaStatus(i.zatca_status).c">{{ fmt.zatcaStatus(i.zatca_status).t }}</span>
                 </td>
                 <td>
-                  <button v-if="i.status !== 'paid'" class="btn btn-sm btn-primary" @click="openPay(i)">تحصيل / سداد</button>
+                  <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">تحصيل / سداد</button>
                   <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">تفاصيل</button>
                 </td>
               </tr>
@@ -270,7 +349,7 @@ const InvoicesView = {
               </table>
               <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
                 <button class="btn btn-sm btn-ghost" @click="downloadXml" :disabled="!detail.zatca.xml_data">تحميل XML</button>
-                <button class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? 'جارٍ الإرسال...' : 'إعادة الإرسال إلى ZATCA' }}</button>
+                <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? 'جارٍ الإرسال...' : 'إعادة الإرسال إلى ZATCA' }}</button>
               </div>
             </div>
           </div>
@@ -290,11 +369,19 @@ const PartiesView = {
   mixins: [CommonMixin],
   data() {
     return {
-      type: 'customer', parties: [], loading: true, alert: null,
+      type: 'customer', parties: [], loading: true, alert: null, filter: '',
       showModal: false, editing: null, form: {}
     };
   },
   async created() { await this.load(); },
+  computed: {
+    title() { return this.type === 'customer' ? 'العملاء' : 'الموردون'; },
+    filteredParties() {
+      const f = this.filter.trim();
+      if (!f) return this.parties;
+      return this.parties.filter(p => p.name.includes(f) || (p.tax_id || '').includes(f) || (p.phone || '').includes(f));
+    }
+  },
   methods: {
     async load() {
       try { this.parties = await this.api(`/api/companies/${this.company.id}/parties?type=${this.type}`); }
@@ -324,21 +411,64 @@ const PartiesView = {
         this.showModal = false;
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
+    },
+    preview() {
+      const rows = this.filteredParties.map(p => [
+        p.name, p.tax_id || '—', p.phone || '—', p.email || '—', this.fmt.money(p.outstanding || 0)
+      ]);
+      this.openPrintPreview({
+        title: this.title,
+        sub: `${this.company.name} - ${this.type === 'customer' ? 'العملاء' : 'الموردون'}`,
+        cols: ['الاسم', 'الرقم الضريبي', 'الهاتف', 'البريد', 'المستحقات'],
+        rows
+      });
+    },
+    exportData() {
+      const rows = this.filteredParties.map(p => [
+        p.name, p.tax_id || '', p.phone || '', p.email || '', this.fmt.num(p.outstanding || 0)
+      ]);
+      this.exportCsv(`parties-${this.type}-${this.company.id}`, ['name', 'tax_id', 'phone', 'email', 'outstanding'], rows);
+    },
+    importData() {
+      this.importJsonFile(async (data) => {
+        const items = Array.isArray(data) ? data : (data.parties || []);
+        if (!items.length) return this.toast('لا توجد أطراف في الملف', 'error');
+        let ok = 0, fail = 0;
+        for (const it of items) {
+          try {
+            await this.api(`/api/companies/${this.company.id}/parties`, {
+              method: 'POST',
+              body: {
+                type: it.type || this.type, name: String(it.name || ''),
+                tax_id: it.tax_id || '', phone: it.phone || '', email: it.email || '',
+                address: it.address || '', opening_balance: it.opening_balance || 0
+              }
+            });
+            ok++;
+          } catch (e) { fail++; }
+        }
+        this.toast(`تم استيراد ${ok} ${this.type === 'customer' ? 'عميل' : 'مورد'}، فشل ${fail}`);
+        await this.load();
+      });
     }
-  },
-  computed: {
-    title() { return this.type === 'customer' ? 'العملاء' : 'الموردون'; }
   },
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
     <div class="flex-between flex-wrap mb-2">
-      <div class="flex">
+      <div class="flex flex-wrap">
         <button class="btn" :class="type === 'customer' ? 'btn-primary' : 'btn-ghost'" @click="setType('customer')">👥 العملاء</button>
         <button class="btn" :class="type === 'supplier' ? 'btn-primary' : 'btn-ghost'" @click="setType('supplier')">🚚 الموردون</button>
+        <input v-if="can('parties', 'search')" placeholder="بحث بالاسم أو الرقم الضريبي أو الهاتف..." v-model="filter" style="min-width:230px;">
       </div>
-      <button class="btn btn-primary" @click="openCreate">+ {{ type === 'customer' ? 'عميل' : 'مورد' }} جديد</button>
+      <div class="flex flex-wrap">
+        <button v-if="can('parties', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
+        <button v-if="can('parties', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
+        <button v-if="can('parties', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+        <button v-if="can('parties', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
+        <button v-if="can('parties', 'add')" class="btn btn-primary" @click="openCreate">+ {{ type === 'customer' ? 'عميل' : 'مورد' }} جديد</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -350,13 +480,13 @@ const PartiesView = {
               <tr><th>الاسم</th><th>الرقم الضريبي</th><th>الهاتف</th><th>البريد</th><th>المستحقات</th><th></th></tr>
             </thead>
             <tbody>
-              <tr v-for="p in parties" :key="p.id">
+              <tr v-for="p in filteredParties" :key="p.id">
                 <td><strong>{{ p.name }}</strong></td>
                 <td class="monospace">{{ p.tax_id || '—' }}</td>
                 <td dir="ltr" style="text-align:right;">{{ p.phone || '—' }}</td>
                 <td dir="ltr" style="text-align:right;">{{ p.email || '—' }}</td>
                 <td class="num">{{ fmt.money(p.outstanding || 0) }}</td>
-                <td><button class="btn btn-sm btn-ghost" @click="openEdit(p)">تعديل</button></td>
+                <td><button v-if="can('parties', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(p)">تعديل</button></td>
               </tr>
               <tr v-if="!parties.length"><td colspan="6" class="muted">لا يوجد {{ type === 'customer' ? 'عملاء' : 'موردون' }} بعد</td></tr>
             </tbody>
