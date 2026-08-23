@@ -68,10 +68,10 @@ const UsersView = {
         if (this.form.password) body.password = this.form.password;
         if (this.editing) {
           await this.api(`/api/users/${this.editing.id}`, { method: 'PUT', body });
-          this.toast('تم تحديث المستخدم والصلاحيات');
+          this.toast(t('تم تحديث المستخدم والصلاحيات'));
         } else {
           await this.api(`/api/users`, { method: 'POST', body });
-          this.toast('تم إنشاء المستخدم');
+          this.toast(t('تم إنشاء المستخدم'));
         }
         this.showModal = false;
         await this.load();
@@ -86,7 +86,7 @@ const UsersView = {
     async doDelete() {
       try {
         await this.api(`/api/users/${this.deleting.id}`, { method: 'DELETE' });
-        this.toast('تم حذف المستخدم');
+        this.toast(t('تم حذف المستخدم'));
         this.deleting = null;
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
@@ -97,7 +97,7 @@ const UsersView = {
       }
     },
     grantedCount(u) {
-      if (u.role === 'admin') return 'الكل';
+      if (u.role === 'admin') return t('الكل');
       let n = 0;
       for (const w of this.windows) for (const a of this.actions) if (u.permissions && u.permissions[w.key] && u.permissions[w.key][a.key]) n++;
       return n + ' / ' + (this.windows.length * this.actions.length);
@@ -108,33 +108,33 @@ const UsersView = {
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
     <div class="flex-between flex-wrap mb-2">
-      <p class="muted">عدد المستخدمين: {{ users.length }}</p>
-      <button class="btn btn-primary" @click="openCreate">+ مستخدم جديد</button>
+      <p class="muted">{{ t('عدد المستخدمين: {n}', { n: users.length }) }}</p>
+      <button class="btn btn-primary" @click="openCreate">+ {{ t('مستخدم جديد') }}</button>
     </div>
 
     <div class="panel">
-      <div class="panel-header"><h3>المستخدمون والصلاحيات</h3></div>
+      <div class="panel-header"><h3>{{ t('المستخدمون والصلاحيات') }}</h3></div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>اسم المستخدم</th><th>الدور</th><th>الحالة</th><th>عدد الصلاحيات</th><th>تاريخ الإنشاء</th><th></th></tr>
+              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
                 <td><strong dir="ltr" style="display:inline-block;text-align:right;">{{ u.username }}</strong>
-                  <span v-if="u.id === currentUserId" class="badge green" style="margin-right:6px;">أنا</span>
+                  <span v-if="u.id === currentUserId" class="badge green" style="margin-right:6px;">{{ t('أنا') }}</span>
                 </td>
-                <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? 'مدير' : 'مستخدم' }}</span></td>
-                <td><span class="badge" :class="u.is_active ? 'green' : 'red'">{{ u.is_active ? 'نشط' : 'موقوف' }}</span></td>
+                <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? t('مدير') : t('مستخدم') }}</span></td>
+                <td><span class="badge" :class="u.is_active ? 'green' : 'red'">{{ u.is_active ? t('نشط') : t('موقوف') }}</span></td>
                 <td>{{ grantedCount(u) }}</td>
                 <td class="monospace">{{ u.created_at ? u.created_at.slice(0, 10) : '—' }}</td>
                 <td>
-                  <button class="btn btn-sm btn-ghost" @click="openEdit(u)">تعديل</button>
-                  <button class="btn btn-sm btn-danger" @click="confirmDelete(u)" v-if="u.id !== currentUserId">حذف</button>
+                  <button class="btn btn-sm btn-ghost" @click="openEdit(u)">{{ t('تعديل') }}</button>
+                  <button class="btn btn-sm btn-danger" @click="confirmDelete(u)" v-if="u.id !== currentUserId">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!users.length"><td colspan="6" class="muted">لا يوجد مستخدمون</td></tr>
+              <tr v-if="!users.length"><td colspan="6" class="muted">{{ t('لا يوجد مستخدمون') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -143,45 +143,45 @@ const UsersView = {
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
       <div class="modal" style="max-width:900px;">
-        <h3>{{ editing ? 'تعديل مستخدم' : 'إضافة مستخدم جديد' }}</h3>
+        <h3>{{ editing ? t('تعديل مستخدم') : t('إضافة مستخدم جديد') }}</h3>
         <div class="form-grid">
-          <label>اسم المستخدم
+          <label>{{ t('اسم المستخدم') }}
             <input v-model.trim="form.username" dir="ltr" placeholder="username">
           </label>
-          <label>كلمة المرور
-            <input v-model="form.password" dir="ltr" :placeholder="editing ? '(تُترك فارغة للاحتفاظ بها)' : '4 أحرف على الأقل'">
+          <label>{{ t('كلمة المرور') }}
+            <input v-model="form.password" dir="ltr" :placeholder="editing ? t('(تُترك فارغة للاحتفاظ بها)') : t('4 أحرف على الأقل')">
           </label>
-          <label>الدور
+          <label>{{ t('الدور') }}
             <select v-model="form.role">
-              <option value="user">مستخدم</option>
-              <option value="admin">مدير</option>
+              <option value="user">{{ t('مستخدم') }}</option>
+              <option value="admin">{{ t('مدير') }}</option>
             </select>
           </label>
           <label class="flex" style="flex-direction:row;align-items:center;gap:8px;">
-            <input type="checkbox" v-model="form.is_active" style="width:auto;"> الحساب نشط
+            <input type="checkbox" v-model="form.is_active" style="width:auto;"> {{ t('الحساب نشط') }}
           </label>
         </div>
 
         <div class="mt-3">
           <div class="flex-between flex-wrap" style="margin-bottom:8px;">
-            <strong>الصلاحيات حسب النافذة</strong>
+            <strong>{{ t('الصلاحيات حسب النافذة') }}</strong>
             <div class="flex" v-if="form.role === 'user'">
-              <button class="btn btn-sm btn-ghost" @click="setAll(true)">تحديد الكل</button>
-              <button class="btn btn-sm btn-ghost" @click="setAll(false)">مسح الكل</button>
+              <button class="btn btn-sm btn-ghost" @click="setAll(true)">{{ t('تحديد الكل') }}</button>
+              <button class="btn btn-sm btn-ghost" @click="setAll(false)">{{ t('مسح الكل') }}</button>
             </div>
           </div>
 
           <div class="alert info" v-if="form.role === 'admin'">
-            مستخدم بصلاحية <strong>مدير</strong> يملك تلقائياً جميع الصلاحيات في جميع النوافذ، ولا حاجة لتحديد صلاحيات فردية.
+            {{ t('مستخدم بصلاحية مدير يملك تلقائياً جميع الصلاحيات في جميع النوافذ، ولا حاجة لتحديد صلاحيات فردية.') }}
           </div>
 
           <div class="perm-matrix" v-else>
             <div class="perm-row perm-head">
-              <span class="perm-window">النافذة</span>
-              <span v-for="a in actions" :key="a.key" class="perm-cell">{{ a.label }}</span>
+              <span class="perm-window">{{ t('النافذة') }}</span>
+              <span v-for="a in actions" :key="a.key" class="perm-cell">{{ t(a.label) }}</span>
             </div>
             <div class="perm-row" v-for="w in windows" :key="w.key">
-              <span class="perm-window">{{ w.label }}</span>
+              <span class="perm-window">{{ t(w.label) }}</span>
               <span v-for="a in actions" :key="a.key" class="perm-cell">
                 <input type="checkbox" v-model="form.permissions[w.key][a.key]">
               </span>
@@ -190,9 +190,9 @@ const UsersView = {
         </div>
 
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showModal = false">إلغاء</button>
+          <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
           <button class="btn btn-primary" @click="save" :disabled="saving || !form.username">
-            {{ saving ? 'جارٍ الحفظ...' : 'حفظ' }}
+            {{ saving ? t('جارٍ الحفظ...') : t('حفظ') }}
           </button>
         </div>
       </div>
@@ -200,11 +200,11 @@ const UsersView = {
 
     <div v-if="deleting" class="modal-overlay" @click.self="deleting = null">
       <div class="modal" style="max-width:440px;border-top:4px solid var(--danger);">
-        <h3>تأكيد حذف المستخدم</h3>
-        <p>هل أنت متأكد من حذف المستخدم <strong dir="ltr">{{ deleting.username }}</strong>؟ سيتم إنهاء جميع جلساته.</p>
+        <h3>{{ t('تأكيد حذف المستخدم') }}</h3>
+        <p>{{ t('هل أنت متأكد من حذف المستخدم {name}؟ سيتم إنهاء جميع جلساته.', { name: deleting.username }) }}</p>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="deleting = null">تراجع</button>
-          <button class="btn btn-danger" @click="doDelete">نعم، حذف</button>
+          <button class="btn btn-ghost" @click="deleting = null">{{ t('تراجع') }}</button>
+          <button class="btn btn-danger" @click="doDelete">{{ t('نعم، حذف') }}</button>
         </div>
       </div>
     </div>

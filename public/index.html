@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام المحاسب - برنامج المحاسبة المالي</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=4">
+  <link rel="stylesheet" href="/css/style.css?v=5">
   <script src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
@@ -14,22 +14,29 @@
     <!-- ==================== شاشة تسجيل الدخول ==================== -->
     <div v-if="!authUser" class="login-screen">
       <div class="login-card">
+        <div class="flex-between" style="margin-bottom:6px;">
+          <div></div>
+          <select class="lang-select" v-model="i18n.lang">
+            <option value="ar">العربية</option>
+            <option value="en">English</option>
+          </select>
+        </div>
         <div class="brand-logo">📊</div>
-        <h1>نظام المحاسب</h1>
-        <p class="login-sub">منظومة محاسبة مالية شاملة مع الفاتورة الإلكترونية السعودية (ZATCA)</p>
+        <h1>{{ t('نظام المحاسب') }}</h1>
+        <p class="login-sub">{{ t('منظومة محاسبة مالية شاملة مع الفاتورة الإلكترونية السعودية (ZATCA)') }}</p>
         <div v-if="loginAlert" class="alert error" style="margin-top:14px;">{{ loginAlert }}</div>
         <div class="login-fields">
-          <label>اسم المستخدم
+          <label>{{ t('اسم المستخدم') }}
             <input v-model.trim="loginForm.username" dir="ltr" placeholder="admin" autocomplete="username">
           </label>
-          <label>كلمة المرور
+          <label>{{ t('كلمة المرور') }}
             <input type="password" v-model="loginForm.password" dir="ltr" placeholder="••••••" autocomplete="current-password" @keyup.enter="doLogin">
           </label>
         </div>
         <button class="btn btn-primary btn-lg login-btn" @click="doLogin" :disabled="!loginForm.username || !loginForm.password || loggingIn">
-          {{ loggingIn ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول' }}
+          {{ loggingIn ? t('جارٍ تسجيل الدخول...') : t('تسجيل الدخول') }}
         </button>
-        <p class="login-hint">الحساب الافتراضي للمدير: admin / admin123</p>
+        <p class="login-hint">{{ t('الحساب الافتراضي للمدير: admin / admin123') }}</p>
       </div>
     </div>
 
@@ -39,9 +46,9 @@
     <div v-if="!activeCompany" class="company-screen">
       <div class="brand-banner">
         <div class="brand-logo">📊</div>
-        <h1>نظام المحاسب</h1>
-        <p>برنامج محاسبة مالي شامل - شركات، سوبر ماركت، مصانع، مخابر طبية</p>
-        <p class="brand-sub">متوافق مع المعايير السعودية وضريبة القيمة المضافة (15%)</p>
+        <h1>{{ t('نظام المحاسب') }}</h1>
+        <p>{{ t('برنامج محاسبة مالي شامل - شركات، سوبر ماركت، مصانع، مخابر طبية') }}</p>
+        <p class="brand-sub">{{ t('متوافق مع المعايير السعودية وضريبة القيمة المضافة (15%)') }}</p>
       </div>
 
       <div class="company-screen-body">
@@ -51,62 +58,62 @@
             <div class="company-card-name">{{ c.name }}</div>
             <div class="company-card-type">{{ typeLabel(c.business_type) }}</div>
             <div class="company-card-meta">
-              <span>السنة المالية: {{ c.current_fiscal_year ? c.current_fiscal_year.name : '—' }}</span>
-              <span>{{ c.counts.entries }} قيد | {{ c.counts.invoices }} فاتورة</span>
+              <span>{{ t('السنة المالية:') }} {{ c.current_fiscal_year ? c.current_fiscal_year.name : '—' }}</span>
+              <span>{{ c.counts.entries }} {{ t('قيد') }} | {{ c.counts.invoices }} {{ t('فاتورة') }}</span>
             </div>
           </div>
         </div>
 
         <div class="company-empty" v-if="!companies.length">
-          <p>لا توجد شركات بعد. ابدأ بإنشاء أول شركة:</p>
+          <p>{{ t('لا توجد شركات بعد. ابدأ بإنشاء أول شركة:') }}</p>
         </div>
 
-        <button v-if="authUser.role === 'admin'" class="btn btn-primary btn-lg" @click="openCreateCompany = true">+ إنشاء شركة جديدة</button>
+        <button v-if="authUser.role === 'admin'" class="btn btn-primary btn-lg" @click="openCreateCompany = true">+ {{ t('إنشاء شركة جديدة') }}</button>
       </div>
 
       <!-- مودال إنشاء شركة -->
       <div v-if="openCreateCompany" class="modal-overlay" tabindex="-1" @click.self="openCreateCompany = false" @keydown.esc="openCreateCompany = false">
         <div class="modal">
-          <h3>إنشاء شركة جديدة</h3>
+          <h3>{{ t('إنشاء شركة جديدة') }}</h3>
           <div class="form-grid">
-            <label>اسم الشركة / المنشأة
-              <input v-model.trim="newCompany.name" placeholder="مثال: مؤسسة النور التجارية">
+            <label>{{ t('اسم الشركة / المنشأة') }}
+              <input v-model.trim="newCompany.name" :placeholder="t('مثال: مؤسسة النور التجارية')">
             </label>
-            <label>نوع النشاط
+            <label>{{ t('نوع النشاط') }}
               <select v-model="newCompany.business_type">
-                <option v-for="t in businessTypes" :key="t.code" :value="t.code">{{ t.label }}</option>
+                <option v-for="bt in businessTypes" :key="bt.code" :value="bt.code">{{ t(bt.label) }}</option>
               </select>
             </label>
-            <label>رقم السجل التجاري
-              <input v-model.trim="newCompany.cr_number" placeholder="مثال: 1010123456" dir="ltr">
+            <label>{{ t('رقم السجل التجاري') }}
+              <input v-model.trim="newCompany.cr_number" :placeholder="t('مثال: 1010123456')" dir="ltr">
             </label>
-            <label>الرقم الضريبي
-              <input v-model.trim="newCompany.vat_number" placeholder="مثال: 310123456700003" dir="ltr">
+            <label>{{ t('الرقم الضريبي') }}
+              <input v-model.trim="newCompany.vat_number" :placeholder="t('مثال: 310123456700003')" dir="ltr">
             </label>
-            <label>نسبة ضريبة القيمة المضافة (%)
+            <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }}
               <input type="number" v-model.number="newCompany.vat_rate" min="0" max="100" step="any">
             </label>
-            <label>شهر بداية السنة المالية
+            <label>{{ t('شهر بداية السنة المالية') }}
               <select v-model.number="newCompany.fiscal_year_start_month">
-                <option :value="1">يناير</option>
-                <option :value="4">أبريل</option>
-                <option :value="7">يوليو</option>
-                <option :value="10">أكتوبر</option>
+                <option :value="1">{{ t('يناير') }}</option>
+                <option :value="4">{{ t('أبريل') }}</option>
+                <option :value="7">{{ t('يوليو') }}</option>
+                <option :value="10">{{ t('أكتوبر') }}</option>
               </select>
             </label>
-            <label class="span2">العنوان
-              <input v-model.trim="newCompany.address" placeholder="العنوان">
+            <label class="span2">{{ t('العنوان') }}
+              <input v-model.trim="newCompany.address" :placeholder="t('العنوان')">
             </label>
-            <label>الهاتف
+            <label>{{ t('الهاتف') }}
               <input v-model.trim="newCompany.phone" placeholder="05xxxxxxxx" dir="ltr">
             </label>
-            <label>البريد الإلكتروني
+            <label>{{ t('البريد الإلكتروني') }}
               <input v-model.trim="newCompany.email" placeholder="info@company.com" dir="ltr">
             </label>
           </div>
           <div class="modal-actions">
-            <button class="btn btn-ghost" @click="openCreateCompany = false">إلغاء</button>
-            <button class="btn btn-primary" @click="createCompany" :disabled="!newCompany.name">إنشاء الشركة</button>
+            <button class="btn btn-ghost" @click="openCreateCompany = false">{{ t('إلغاء') }}</button>
+            <button class="btn btn-primary" @click="createCompany" :disabled="!newCompany.name">{{ t('إنشاء الشركة') }}</button>
           </div>
         </div>
       </div>
@@ -118,13 +125,13 @@
         <div class="sidebar-brand" @click="goDashboard">
           <span class="sidebar-logo">📊</span>
           <div>
-            <strong>نظام المحاسب</strong>
+            <strong>{{ t('نظام المحاسب') }}</strong>
             <small>{{ activeCompany.name }}</small>
           </div>
         </div>
 
         <div class="company-switch">
-          <button class="btn btn-sm btn-ghost" @click="backToCompanies">↻ تبديل الشركة</button>
+          <button class="btn btn-sm btn-ghost" @click="backToCompanies">{{ t('↻ تبديل الشركة') }}</button>
         </div>
 
         <nav class="nav">
@@ -134,9 +141,9 @@
         </nav>
 
         <div class="sidebar-footer">
-          <div class="fy-badge">السنة المالية: <strong>{{ info.active_fiscal_year ? info.active_fiscal_year.name : '—' }}</strong></div>
-          <button v-if="canWindow('closing', 'edit')" class="btn btn-sm btn-primary" @click="navigate('closing')">🔒 إقفال السنة</button>
-          <button class="btn btn-sm btn-ghost" @click="logout" style="margin-top:8px;color:var(--sidebar-text);border-color:rgba(255,255,255,.15);">🚪 تسجيل الخروج</button>
+          <div class="fy-badge">{{ t('السنة المالية:') }} <strong>{{ info.active_fiscal_year ? info.active_fiscal_year.name : '—' }}</strong></div>
+          <button v-if="canWindow('closing', 'edit')" class="btn btn-sm btn-primary" @click="navigate('closing')">{{ t('🔒 إقفال السنة') }}</button>
+          <button class="btn btn-sm btn-ghost" @click="logout" style="margin-top:8px;color:var(--sidebar-text);border-color:rgba(255,255,255,.15);">{{ t('🚪 تسجيل الخروج') }}</button>
         </div>
       </aside>
 
@@ -144,10 +151,14 @@
         <header class="topbar">
           <h2>{{ currentNavLabel }}</h2>
           <div class="topbar-actions">
+            <select class="lang-select" v-model="i18n.lang">
+              <option value="ar">العربية</option>
+              <option value="en">English</option>
+            </select>
             <span class="chip">👤 {{ authUser.username }}</span>
-            <span class="chip">{{ info.business_type_label }}</span>
-            <span class="chip">ضريبة: {{ info.settings.vat_rate || 15 }}%</span>
-            <span class="chip" v-if="info.active_fiscal_year && info.active_fiscal_year.status === 'open'">سنة مفتوحة</span>
+            <span class="chip">{{ t(info.business_type_label) }}</span>
+            <span class="chip">{{ t('ضريبة:') }} {{ info.settings.vat_rate || 15 }}%</span>
+            <span class="chip" v-if="info.active_fiscal_year && info.active_fiscal_year.status === 'open'">{{ t('سنة مفتوحة') }}</span>
           </div>
         </header>
 
@@ -180,21 +191,22 @@
           </table>
         </div>
         <div class="modal-actions no-print">
-          <button class="btn btn-ghost" @click="closePrintPreview">إغلاق</button>
-          <button class="btn btn-primary" @click="doPrint" v-if="canWindow(view, 'print')">🖨️ طباعة</button>
+          <button class="btn btn-ghost" @click="closePrintPreview">{{ t('إغلاق') }}</button>
+          <button class="btn btn-primary" @click="doPrint" v-if="canWindow(view, 'print')">{{ t('🖨️ طباعة') }}</button>
         </div>
       </div>
     </div>
     </template>
   </div>
 
-  <script src="/js/views-common.js?v=4"></script>
-  <script src="/js/views-dashboard.js?v=4"></script>
-  <script src="/js/views-accounts.js?v=4"></script>
-  <script src="/js/views-reports.js?v=4"></script>
-  <script src="/js/views-invoices.js?v=4"></script>
-  <script src="/js/views-closing.js?v=4"></script>
-  <script src="/js/views-users.js?v=4"></script>
-  <script src="/js/app.js?v=4"></script>
+  <script src="/js/i18n.js?v=5"></script>
+  <script src="/js/views-common.js?v=5"></script>
+  <script src="/js/views-dashboard.js?v=5"></script>
+  <script src="/js/views-accounts.js?v=5"></script>
+  <script src="/js/views-reports.js?v=5"></script>
+  <script src="/js/views-invoices.js?v=5"></script>
+  <script src="/js/views-closing.js?v=5"></script>
+  <script src="/js/views-users.js?v=5"></script>
+  <script src="/js/app.js?v=5"></script>
 </body>
 </html>

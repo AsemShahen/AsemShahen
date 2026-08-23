@@ -34,10 +34,10 @@ const AccountsView = {
       try {
         if (this.editing) {
           await this.api(`/api/companies/${this.company.id}/accounts/${this.editing.id}`, { method: 'PUT', body: this.form });
-          this.toast('تم تحديث الحساب بنجاح');
+          this.toast(t('تم تحديث الحساب بنجاح'));
         } else {
           await this.api(`/api/companies/${this.company.id}/accounts`, { method: 'POST', body: this.form });
-          this.toast('تم إنشاء الحساب بنجاح');
+          this.toast(t('تم إنشاء الحساب بنجاح'));
         }
         this.showModal = false;
         await this.load();
@@ -49,22 +49,22 @@ const AccountsView = {
       return this.accounts.filter(a => a.code.includes(f) || a.name.includes(f));
     },
     preview() {
-      const rows = this.filtered().map(a => [a.code, a.name, accountTypeLabels[a.type] || a.type, a.normal_side === 'debit' ? 'مدين' : 'دائن', this.fmt.num(a.balance) + ' ر.س', a.vat_applicable ? 'نعم' : 'لا']);
+      const rows = this.filtered().map(a => [a.code, a.name, t(accountTypeLabels[a.type] || a.type), a.normal_side === 'debit' ? t('مدين') : t('دائن'), this.fmt.num(a.balance) + ' ' + t('ر.س'), a.vat_applicable ? t('نعم') : t('لا')]);
       this.openPrintPreview({
-        title: 'المخطط المحاسبي',
-        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : '—'}`,
-        cols: ['الرمز', 'اسم الحساب', 'التصنيف', 'طبيعة الرصيد', 'الرصيد', 'ضريبة'],
+        title: t('المخطط المحاسبي'),
+        sub: `${this.company.name} - ${t('السنة المالية {fy}', { fy: this.info.active_fiscal_year ? this.info.active_fiscal_year.name : '—' })}`,
+        cols: [t('الرمز'), t('اسم الحساب'), t('التصنيف'), t('طبيعة الرصيد'), t('الرصيد'), t('ضريبة')],
         rows
       });
     },
     exportData() {
-      const rows = this.filtered().map(a => [a.code, a.name, accountTypeLabels[a.type] || a.type, a.normal_side === 'debit' ? 'مدين' : 'دائن', this.fmt.num(a.balance), a.vat_applicable ? 'نعم' : 'لا']);
+      const rows = this.filtered().map(a => [a.code, a.name, t(accountTypeLabels[a.type] || a.type), a.normal_side === 'debit' ? t('مدين') : t('دائن'), this.fmt.num(a.balance), a.vat_applicable ? t('نعم') : t('لا')]);
       this.exportCsv(`accounts-${this.company.id}`, ['code', 'name', 'type', 'side', 'balance', 'vat'], rows);
     },
     importData() {
       this.importJsonFile(async (data) => {
         const items = Array.isArray(data) ? data : (data.accounts || []);
-        if (!items.length) return this.toast('لا توجد حسابات في الملف', 'error');
+        if (!items.length) return this.toast(t('لا توجد حسابات في الملف'), 'error');
         let ok = 0, fail = 0;
         for (const it of items) {
           try {
@@ -81,56 +81,56 @@ const AccountsView = {
             ok++;
           } catch (e) { fail++; }
         }
-        this.toast(`تم استيراد ${ok} حساب، فشل ${fail}`);
+        this.toast(t('تم استيراد {ok} حساب، فشل {fail}', { ok, fail }));
         await this.load();
       });
     }
   },
   computed: {
     categories() {
-      return Object.entries(accountCategoryLabels).map(([k, v]) => ({ code: k, label: v }));
+      return Object.entries(accountCategoryLabels).map(([k, v]) => ({ code: k, label: t(v) }));
     }
   },
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
-    <div class="flex-between flex-wrap mb-2">
+      <div class="flex-between flex-wrap mb-2">
       <div class="flex">
-        <input v-if="can('accounts', 'search')" placeholder="بحث برقم الحساب أو الاسم..." v-model="filter" style="min-width:260px;">
+        <input v-if="can('accounts', 'search')" :placeholder="t('بحث برقم الحساب أو الاسم...')" v-model="filter" style="min-width:260px;">
       </div>
       <div class="flex flex-wrap">
-        <button v-if="can('accounts', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
-        <button v-if="can('accounts', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
-        <button v-if="can('accounts', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
-        <button v-if="can('accounts', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
-        <button v-if="can('accounts', 'add')" class="btn btn-primary" @click="openCreate">+ حساب جديد</button>
+        <button v-if="can('accounts', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
+        <button v-if="can('accounts', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
+        <button v-if="can('accounts', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
+        <button v-if="can('accounts', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ {{ t('استيراد JSON') }}</button>
+        <button v-if="can('accounts', 'add')" class="btn btn-primary" @click="openCreate">+ {{ t('حساب جديد') }}</button>
       </div>
     </div>
 
     <div class="panel">
-      <div class="panel-header"><h3>المخطط المحاسبي ({{ accounts.length }} حساب)</h3></div>
+      <div class="panel-header"><h3>{{ t('المخطط المحاسبي ({count})', { count: accounts.length }) }}</h3></div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>الرمز</th><th>اسم الحساب</th><th>التصنيف</th><th>طبيعة الرصيد</th><th>الرصيد الحالي</th><th>ضريبة</th><th></th>
+                <th>{{ t('الرمز') }}</th><th>{{ t('اسم الحساب') }}</th><th>{{ t('التصنيف') }}</th><th>{{ t('طبيعة الرصيد') }}</th><th>{{ t('الرصيد الحالي') }}</th><th>{{ t('ضريبة') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="a in filtered()" :key="a.id" :style="a.is_header ? 'background:#f0f5f2;font-weight:700;' : ''">
                 <td class="monospace" :style="a.is_header ? '' : 'padding-right:24px;'">{{ a.code }}</td>
                 <td :style="a.is_header ? '' : 'padding-right:8px;'">{{ a.name }}</td>
-                <td><span class="badge" :class="fmt.sideColor(a.type)">{{ accountTypeLabels[a.type] }}</span></td>
-                <td class="muted">{{ a.normal_side === 'debit' ? 'مدين' : 'دائن' }}</td>
+                <td><span class="badge" :class="fmt.sideColor(a.type)">{{ t(accountTypeLabels[a.type]) }}</span></td>
+                <td class="muted">{{ a.normal_side === 'debit' ? t('مدين') : t('دائن') }}</td>
                 <td class="num" :class="a.balance < 0 ? 'neg' : ''">{{ fmt.money(a.balance) }}</td>
                 <td>{{ a.vat_applicable ? '✓' : '—' }}</td>
                 <td>
-                  <button v-if="!a.is_system && can('accounts', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(a)">تعديل</button>
+                  <button v-if="!a.is_system && can('accounts', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(a)">{{ t('تعديل') }}</button>
                 </td>
               </tr>
-              <tr v-if="!filtered().length"><td colspan="7" class="muted">لا توجد حسابات</td></tr>
+              <tr v-if="!filtered().length"><td colspan="7" class="muted">{{ t('لا توجد حسابات') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -139,46 +139,46 @@ const AccountsView = {
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
       <div class="modal">
-        <h3>{{ editing ? 'تعديل حساب' : 'إضافة حساب جديد' }}</h3>
+        <h3>{{ editing ? t('تعديل حساب') : t('إضافة حساب جديد') }}</h3>
         <div class="form-grid">
-          <label>رمز الحساب <input v-model.trim="form.code" dir="ltr" :disabled="!!editing"></label>
-          <label>اسم الحساب <input v-model.trim="form.name"></label>
-          <label>التصنيف الرئيسي
+          <label>{{ t('رمز الحساب') }} <input v-model.trim="form.code" dir="ltr" :disabled="!!editing"></label>
+          <label>{{ t('اسم الحساب') }} <input v-model.trim="form.name"></label>
+          <label>{{ t('التصنيف الرئيسي') }}
             <select v-model="form.type" @change="form.normal_side = (form.type === 'asset' || form.type === 'expense') ? 'debit' : 'credit'">
-              <option value="asset">أصل</option>
-              <option value="liability">خصم / التزام</option>
-              <option value="equity">حقوق ملكية</option>
-              <option value="revenue">إيراد</option>
-              <option value="expense">مصروف</option>
+              <option value="asset">{{ t('أصل') }}</option>
+              <option value="liability">{{ t('خصم / التزام') }}</option>
+              <option value="equity">{{ t('حقوق ملكية') }}</option>
+              <option value="revenue">{{ t('إيراد') }}</option>
+              <option value="expense">{{ t('مصروف') }}</option>
             </select>
           </label>
-          <label>الفئة الفرعية
+          <label>{{ t('الفئة الفرعية') }}
             <select v-model="form.category">
               <option v-for="c in categories" :key="c.code" :value="c.code">{{ c.label }}</option>
             </select>
           </label>
-          <label>طبيعة الرصيد
+          <label>{{ t('طبيعة الرصيد') }}
             <select v-model="form.normal_side">
-              <option value="debit">مدين</option>
-              <option value="credit">دائن</option>
+              <option value="debit">{{ t('مدين') }}</option>
+              <option value="credit">{{ t('دائن') }}</option>
             </select>
           </label>
-          <label>الرقم الأب (اختياري)
-            <input v-model.trim="form.parent_code" placeholder="مثال: 11" dir="ltr">
+          <label>{{ t('الرقم الأب (اختياري)') }}
+            <input v-model.trim="form.parent_code" :placeholder="t('مثال: 11')" dir="ltr">
           </label>
-          <label>يخضع للضريبة
+          <label>{{ t('يخضع للضريبة') }}
             <select v-model.number="form.vat_applicable">
-              <option :value="1">نعم</option>
-              <option :value="0">لا</option>
+              <option :value="1">{{ t('نعم') }}</option>
+              <option :value="0">{{ t('لا') }}</option>
             </select>
           </label>
-          <label v-if="!editing">رصيد افتتاحي
+          <label v-if="!editing">{{ t('رصيد افتتاحي') }}
             <input type="number" v-model.number="form.opening_balance">
           </label>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showModal = false">إلغاء</button>
-          <button class="btn btn-primary" @click="save" :disabled="!form.name || !form.code">حفظ</button>
+          <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
+          <button class="btn btn-primary" @click="save" :disabled="!form.name || !form.code">{{ t('حفظ') }}</button>
         </div>
       </div>
     </div>
@@ -235,7 +235,7 @@ const JournalView = {
             lines: this.form.lines.map(l => ({ account_id: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, detail: l.detail }))
           }
         });
-        this.toast('تم تسجيل القيد بنجاح');
+        this.toast(t('تم تسجيل القيد بنجاح'));
         this.showModal = false;
         await this.load();
         this.$emit('refresh');
@@ -243,10 +243,10 @@ const JournalView = {
       finally { this.saving = false; }
     },
     async del(entry) {
-      if (!confirm(`هل أنت متأكد من حذف القيد ${entry.entry_no}؟`)) return;
+      if (!confirm(t('هل أنت متأكد من حذف القيد {no}؟', { no: entry.entry_no }))) return;
       try {
         await this.api(`/api/companies/${this.company.id}/journal/${entry.id}`, { method: 'DELETE' });
-        this.toast('تم حذف القيد');
+        this.toast(t('تم حذف القيد'));
         await this.load();
         this.$emit('refresh');
       } catch (e) { this.toast(e.message, 'error'); }
@@ -268,12 +268,12 @@ const JournalView = {
         e.entry_no, e.date, e.description,
         this.fmt.num(e.lines.reduce((s, l) => s + l.debit, 0)),
         this.fmt.num(e.lines.reduce((s, l) => s + l.credit, 0)),
-        e.is_closing ? 'إقفال' : (e.is_opening ? 'افتتاحي' : 'يومي')
+        e.is_closing ? t('إقفال') : (e.is_opening ? t('افتتاحي') : t('يومي'))
       ]);
       this.openPrintPreview({
-        title: 'قيود اليومية',
-        sub: `${this.company.name} - السنة المالية الحالية`,
-        cols: ['رقم القيد', 'التاريخ', 'البيان', 'مدين', 'دائن', 'النوع'],
+        title: t('قيود اليومية'),
+        sub: `${this.company.name} - ${t('السنة المالية الحالية')}`,
+        cols: [t('رقم القيد'), t('التاريخ'), t('البيان'), t('مدين'), t('دائن'), t('النوع')],
         rows
       });
     },
@@ -282,14 +282,14 @@ const JournalView = {
         e.entry_no, e.date, e.description,
         this.fmt.num(e.lines.reduce((s, l) => s + l.debit, 0)),
         this.fmt.num(e.lines.reduce((s, l) => s + l.credit, 0)),
-        e.is_closing ? 'إقفال' : (e.is_opening ? 'افتتاحي' : 'يومي')
+        e.is_closing ? t('إقفال') : (e.is_opening ? t('افتتاحي') : t('يومي'))
       ]);
       this.exportCsv(`journal-${this.company.id}`, ['entry_no', 'date', 'description', 'debit', 'credit', 'type'], rows);
     },
     importData() {
       this.importJsonFile(async (data) => {
         const items = Array.isArray(data) ? data : (data.entries || []);
-        if (!items.length) return this.toast('لا توجد قيود في الملف', 'error');
+        if (!items.length) return this.toast(t('لا توجد قيود في الملف'), 'error');
         let ok = 0, fail = 0;
         for (const it of items) {
           try {
@@ -297,7 +297,7 @@ const JournalView = {
               const acc = this.accounts.find(a => a.code === String(l.account_code));
               return { account_id: acc ? acc.id : null, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, detail: l.detail || '' };
             });
-            if (lines.some(l => !l.account_id)) throw new Error('رمز حساب غير موجود');
+            if (lines.some(l => !l.account_id)) throw new Error(t('رمز حساب غير موجود'));
             await this.api(`/api/companies/${this.company.id}/journal`, {
               method: 'POST',
               body: { date: it.date, description: it.description || '', lines }
@@ -305,7 +305,7 @@ const JournalView = {
             ok++;
           } catch (e) { fail++; }
         }
-        this.toast(`تم استيراد ${ok} قيد، فشل ${fail}`);
+        this.toast(t('تم استيراد {ok} قيد، فشل {fail}', { ok, fail }));
         await this.load();
       });
     }
@@ -322,25 +322,25 @@ const JournalView = {
 
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
-        <input v-if="can('journal', 'search')" placeholder="بحث برقم القيد أو البيان أو الحساب..." v-model="filter" style="min-width:260px;">
-        <p class="muted">عدد القيود: {{ entries.length }}</p>
+        <input v-if="can('journal', 'search')" :placeholder="t('بحث برقم القيد أو البيان أو الحساب...')" v-model="filter" style="min-width:260px;">
+        <p class="muted">{{ t('عدد القيود: {n}', { n: entries.length }) }}</p>
       </div>
       <div class="flex flex-wrap">
-        <button v-if="can('journal', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
-        <button v-if="can('journal', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
-        <button v-if="can('journal', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
-        <button v-if="can('journal', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
-        <button v-if="can('journal', 'add')" class="btn btn-primary" @click="openCreate">+ قيد جديد</button>
+        <button v-if="can('journal', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
+        <button v-if="can('journal', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
+        <button v-if="can('journal', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
+        <button v-if="can('journal', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ {{ t('استيراد JSON') }}</button>
+        <button v-if="can('journal', 'add')" class="btn btn-primary" @click="openCreate">+ {{ t('قيد جديد') }}</button>
       </div>
     </div>
 
     <div class="panel">
-      <div class="panel-header"><h3>قيود اليومية - السنة المالية الحالية</h3></div>
+      <div class="panel-header"><h3>{{ t('قيود اليومية - السنة المالية الحالية') }}</h3></div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>رقم القيد</th><th>التاريخ</th><th>البيان</th><th>الحسابات</th><th>مدين</th><th>دائن</th><th>النوع</th><th></th></tr>
+              <tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th><th>{{ t('الحسابات') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('النوع') }}</th><th></th></tr>
             </thead>
             <tbody>
               <template v-for="e in filteredEntries()" :key="e.id">
@@ -357,15 +357,15 @@ const JournalView = {
                   <td class="num">{{ fmt.num(e.lines.reduce((s,l)=>s+l.credit,0)) }}</td>
                   <td>
                     <span class="badge" :class="e.is_closing ? 'yellow' : (e.is_opening ? 'gray' : 'green')">
-                      {{ e.is_closing ? 'إقفال' : (e.is_opening ? 'افتتاحي' : 'يومي') }}
+                      {{ e.is_closing ? t('إقفال') : (e.is_opening ? t('افتتاحي') : t('يومي')) }}
                     </span>
                   </td>
                   <td>
-                    <button v-if="!e.is_closing && !e.is_opening && can('journal', 'delete')" class="btn btn-sm btn-ghost" @click="del(e)">حذف</button>
+                    <button v-if="!e.is_closing && !e.is_opening && can('journal', 'delete')" class="btn btn-sm btn-ghost" @click="del(e)">{{ t('حذف') }}</button>
                   </td>
                 </tr>
               </template>
-              <tr v-if="!entries.length"><td colspan="8" class="muted">لا توجد قيود بعد - أضف أول قيد</td></tr>
+              <tr v-if="!entries.length"><td colspan="8" class="muted">{{ t('لا توجد قيود بعد - أضف أول قيد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -374,41 +374,41 @@ const JournalView = {
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
       <div class="modal" style="max-width:900px;">
-        <h3>قيد يومية جديد</h3>
+        <h3>{{ t('قيد يومية جديد') }}</h3>
         <div class="form-grid">
-          <label>التاريخ <input type="date" v-model="form.date"></label>
-          <label class="span2">البيان <input v-model.trim="form.description" placeholder="شرح القيد..."></label>
+          <label>{{ t('التاريخ') }} <input type="date" v-model="form.date"></label>
+          <label class="span2">{{ t('البيان') }} <input v-model.trim="form.description" :placeholder="t('شرح القيد...')"></label>
         </div>
 
         <div class="entry-lines mt-2">
           <div class="line-row line-head">
-            <span>الحساب</span><span>مدين</span><span>دائن</span><span>المبلغ</span><span>تفاصيل</span><span></span>
+            <span>{{ t('الحساب') }}</span><span>{{ t('مدين') }}</span><span>{{ t('دائن') }}</span><span>{{ t('المبلغ') }}</span><span>{{ t('تفاصيل') }}</span><span></span>
           </div>
           <div class="line-row" v-for="(l, idx) in form.lines" :key="idx">
             <select v-model="l.account_id">
-              <option value="">اختر الحساب...</option>
+              <option value="">{{ t('اختر الحساب...') }}</option>
               <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} - {{ a.name }}</option>
             </select>
             <input type="number" v-model.number="l.debit" placeholder="0.00" @input="clearCredit(l)">
             <input type="number" v-model.number="l.credit" placeholder="0.00" @input="clearDebit(l)">
             <span class="num">{{ fmt.num((Number(l.debit)||0) + (Number(l.credit)||0)) }}</span>
-            <input v-model.trim="l.detail" placeholder="تفاصيل">
+            <input v-model.trim="l.detail" :placeholder="t('تفاصيل')">
             <button class="btn btn-sm btn-danger" @click="removeLine(idx)" v-if="form.lines.length > 2">✕</button>
           </div>
         </div>
 
         <div class="flex-between mt-2">
-          <button class="btn btn-ghost" @click="addLine">+ إضافة سطر</button>
+          <button class="btn btn-ghost" @click="addLine">+ {{ t('إضافة سطر') }}</button>
           <div class="flex">
-            <span>المجاميع: مدين <strong class="monospace">{{ fmt.num(totalDebit()) }}</strong> / دائن <strong class="monospace">{{ fmt.num(totalCredit()) }}</strong></span>
-            <span v-if="Math.abs(getBalance()) > 0.01" class="badge red">الفرق: {{ fmt.num(getBalance()) }} - القيد غير متوازن</span>
-            <span v-else class="badge green">متوازن ✓</span>
+            <span>{{ t('المجاميع:') }} {{ t('مدين') }} <strong class="monospace">{{ fmt.num(totalDebit()) }}</strong> / {{ t('دائن') }} <strong class="monospace">{{ fmt.num(totalCredit()) }}</strong></span>
+            <span v-if="Math.abs(getBalance()) > 0.01" class="badge red">{{ t('الفرق:') }} {{ fmt.num(getBalance()) }} - {{ t('القيد غير متوازن') }}</span>
+            <span v-else class="badge green">{{ t('متوازن ✓') }}</span>
           </div>
         </div>
 
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showModal = false">إلغاء</button>
-          <button class="btn btn-primary" @click="save" :disabled="!canSave || saving">{{ saving ? 'جارٍ الحفظ...' : 'حفظ القيد' }}</button>
+          <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
+          <button class="btn btn-primary" @click="save" :disabled="!canSave || saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ القيد') }}</button>
         </div>
       </div>
     </div>
@@ -445,9 +445,9 @@ const LedgerView = {
         this.fmt.num(this.runningTotals[i])
       ]);
       this.openPrintPreview({
-        title: `دفتر الأستاذ - ${this.ledger.account.code} ${this.ledger.account.name}`,
-        sub: `${this.company.name} - رصيد الحساب: ${this.fmt.money(this.ledger.balance.balance)}`,
-        cols: ['التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن', 'الرصيد'],
+        title: t('دفتر الأستاذ - {code} {name}', { code: this.ledger.account.code, name: this.ledger.account.name }),
+        sub: `${this.company.name} - ${t('رصيد الحساب:')} ${this.fmt.money(this.ledger.balance.balance)}`,
+        cols: [t('التاريخ'), t('رقم القيد'), t('البيان'), t('مدين'), t('دائن'), t('الرصيد')],
         rows
       });
     },
@@ -476,14 +476,14 @@ const LedgerView = {
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
     <div class="panel">
-      <div class="panel-header"><h3>دفتر الأستاذ</h3></div>
+      <div class="panel-header"><h3>{{ t('دفتر الأستاذ') }}</h3></div>
       <div class="panel-body">
         <div class="flex flex-wrap">
           <select v-model="accountId" style="min-width:320px;" @change="loadLedger">
-            <option value="">اختر الحساب لعرض حركاته...</option>
+            <option value="">{{ t('اختر الحساب لعرض حركاته...') }}</option>
             <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} - {{ a.name }}</option>
           </select>
-          <span v-if="ledger" class="chip">رصيد الحساب: {{ fmt.money(ledger.balance.balance) }}</span>
+          <span v-if="ledger" class="chip">{{ t('رصيد الحساب:') }} {{ fmt.money(ledger.balance.balance) }}</span>
         </div>
       </div>
     </div>
@@ -492,17 +492,17 @@ const LedgerView = {
       <div class="panel-header">
         <h3>{{ ledger.account.code }} - {{ ledger.account.name }}</h3>
         <div class="flex flex-wrap">
-          <span class="chip">الرصيد الافتتاحي: {{ fmt.money(ledger.balance.balance - ledger.lines.reduce((s,l)=>s+(ledger.account.normal_side==='credit'?Number(l.credit)-Number(l.debit):Number(l.debit)-Number(l.credit)),0)) }}</span>
-          <button v-if="can('ledger', 'print_preview')" class="btn btn-sm btn-ghost" @click="previewLedger">👁️ معاينة قبل الطباعة</button>
-          <button v-if="can('ledger', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
-          <button v-if="can('ledger', 'export')" class="btn btn-sm btn-ghost" @click="exportLedger">⬇️ تصدير CSV</button>
+          <span class="chip">{{ t('الرصيد الافتتاحي:') }} {{ fmt.money(ledger.balance.balance - ledger.lines.reduce((s,l)=>s+(ledger.account.normal_side==='credit'?Number(l.credit)-Number(l.debit):Number(l.debit)-Number(l.credit)),0)) }}</span>
+          <button v-if="can('ledger', 'print_preview')" class="btn btn-sm btn-ghost" @click="previewLedger">👁️ {{ t('معاينة قبل الطباعة') }}</button>
+          <button v-if="can('ledger', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
+          <button v-if="can('ledger', 'export')" class="btn btn-sm btn-ghost" @click="exportLedger">⬇️ {{ t('تصدير CSV') }}</button>
         </div>
       </div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr>
+              <tr><th>{{ t('التاريخ') }}</th><th>{{ t('رقم القيد') }}</th><th>{{ t('البيان') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('الرصيد') }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="(l, i) in ledger.lines" :key="l.id">
@@ -513,11 +513,11 @@ const LedgerView = {
                 <td class="num">{{ l.credit ? fmt.num(l.credit) : '—' }}</td>
                 <td class="num"><strong>{{ fmt.num(runningTotals[i]) }}</strong></td>
               </tr>
-              <tr v-if="!ledger.lines.length"><td colspan="6" class="muted">لا توجد حركات على هذا الحساب</td></tr>
+              <tr v-if="!ledger.lines.length"><td colspan="6" class="muted">{{ t('لا توجد حركات على هذا الحساب') }}</td></tr>
             </tbody>
             <tfoot>
               <tr class="total-row">
-                <td colspan="3">الإجمالي</td>
+                <td colspan="3">{{ t('الإجمالي') }}</td>
                 <td class="num">{{ fmt.num(ledger.balance.debit) }}</td>
                 <td class="num">{{ fmt.num(ledger.balance.credit) }}</td>
                 <td class="num">{{ fmt.num(ledger.balance.balance) }}</td>

@@ -2,7 +2,7 @@
 
 // ==================== أدوات مساعدة للعرض ====================
 const fmt = {
-  money(v, currency = 'ر.س') {
+  money(v, currency = t('ر.س')) {
     const n = Number(v) || 0;
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
   },
@@ -14,13 +14,13 @@ const fmt = {
     return String(d);
   },
   sideText(type) {
-    return { asset: 'أصل', liability: 'خصم', equity: 'حقوق ملكية', revenue: 'إيراد', expense: 'مصروف' }[type] || type;
+    return { asset: t('أصل'), liability: t('خصم'), equity: t('حقوق ملكية'), revenue: t('إيراد'), expense: t('مصروف') }[type] || type;
   },
   sideColor(type) {
     return { asset: 'green', liability: 'yellow', equity: 'gray', revenue: 'green', expense: 'red' }[type] || 'gray';
   },
   invStatus(s) {
-    return { paid: { t: 'مدفوعة', c: 'green' }, partial: { t: 'مدفوعة جزئياً', c: 'yellow' }, unpaid: { t: 'غير مدفوعة', c: 'red' } }[s] || { t: s, c: 'gray' };
+    return { paid: { t: t('مدفوعة'), c: 'green' }, partial: { t: t('مدفوعة جزئياً'), c: 'yellow' }, unpaid: { t: t('غير مدفوعة'), c: 'red' } }[s] || { t: s, c: 'gray' };
   },
   payMethod(p, methods) {
     if (!p) return '—';
@@ -32,15 +32,15 @@ const fmt = {
   },
   zatcaStatus(s) {
     return {
-      not_configured: { t: 'لم تُرسل (غير مُفعّل)', c: 'gray' },
-      submitting: { t: 'جارٍ الإرسال...', c: 'yellow' },
-      submitted: { t: 'تم الإبلاغ', c: 'green' },
-      cleared: { t: 'تم الاعتماد', c: 'green' },
-      failed: { t: 'فشل الإرسال', c: 'red' }
+      not_configured: { t: t('لم تُرسل (غير مُفعّل)'), c: 'gray' },
+      submitting: { t: t('جارٍ الإرسال...'), c: 'yellow' },
+      submitted: { t: t('تم الإبلاغ'), c: 'green' },
+      cleared: { t: t('تم الاعتماد'), c: 'green' },
+      failed: { t: t('فشل الإرسال'), c: 'red' }
     }[s] || { t: '—', c: 'gray' };
   },
-  zatcaType(t) {
-    return { standard: 'قياسية (B2B)', simplified: 'مبسطة (B2C)' }[t] || t || '—';
+  zatcaType(type) {
+    return { standard: t('قياسية (B2B)'), simplified: t('مبسطة (B2C)') }[type] || type || '—';
   }
 };
 
@@ -51,8 +51,8 @@ const typesMeta = {
   medical_lab: { icon: '🔬', label: 'مخبر طبي' }
 };
 
-function typeIcon(t) { return (typesMeta[t] || typesMeta.corporate).icon; }
-function typeLabel(t) { return (typesMeta[t] || typesMeta.corporate).label; }
+function typeIcon(type) { return (typesMeta[type] || typesMeta.corporate).icon; }
+function typeLabel(type) { return t((typesMeta[type] || typesMeta.corporate).label); }
 
 const accountTypeLabels = {
   asset: 'أصل', liability: 'خصم / التزام', equity: 'حقوق ملكية', revenue: 'إيراد', expense: 'مصروف'
@@ -155,7 +155,7 @@ function importJsonFile(onData) {
     const reader = new FileReader();
     reader.onload = () => {
       try { onData(JSON.parse(reader.result)); }
-      catch (e) { alert('ملف JSON غير صالح'); }
+      catch (e) { alert(t('ملف JSON غير صالح')); }
     };
     reader.readAsText(f);
   };
@@ -187,7 +187,7 @@ const CommonMixin = {
     async api(path, opts = {}) {
       const r = await apiFetch(path, opts);
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || 'خطأ في الطلب');
+      if (!r.ok) throw new Error(data.error || t('خطأ في الطلب'));
       return data;
     },
     toast(message, type = 'success') {

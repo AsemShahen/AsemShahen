@@ -21,7 +21,7 @@ const DashboardView = {
       return Math.max(...this.d.salesByMonth.map(m => Number(m.t)), 1);
     },
     monthNames() {
-      return ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+      return ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'].map(n => n ? t(n) : n);
     }
   },
   methods: {
@@ -29,14 +29,14 @@ const DashboardView = {
       const d = this.d;
       if (!d) return;
       const rows = [
-        ['صافي الدخل', this.fmt.num(d.stmt.netIncome)],
-        ['إجمالي المبيعات', this.fmt.num(d.sales)],
-        ['إجمالي المشتريات', this.fmt.num(d.purchases)],
-        ['النقدية', this.fmt.num(d.cash)],
-        ['البنك', this.fmt.num(d.bank)],
-        ['ذمم مدينة (عملاء)', this.fmt.num(d.receivables)],
-        ['ذمم دائنة (موردون)', this.fmt.num(d.payables)],
-        ['ضريبة القيمة المضافة', this.fmt.num(this.info.vat ? this.info.vat.netDue : 0)]
+        [t('صافي الدخل'), this.fmt.num(d.stmt.netIncome)],
+        [t('إجمالي المبيعات'), this.fmt.num(d.sales)],
+        [t('إجمالي المشتريات'), this.fmt.num(d.purchases)],
+        [t('النقدية'), this.fmt.num(d.cash)],
+        [t('البنك'), this.fmt.num(d.bank)],
+        [t('ذمم مدينة (عملاء)'), this.fmt.num(d.receivables)],
+        [t('ذمم دائنة (موردون)'), this.fmt.num(d.payables)],
+        [t('ضريبة القيمة المضافة'), this.fmt.num(this.info.vat ? this.info.vat.netDue : 0)]
       ];
       this.exportCsv(`dashboard-${this.company.id}`, ['kpi', 'value'], rows);
     }
@@ -45,64 +45,64 @@ const DashboardView = {
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
     <div class="flex" style="justify-content:flex-end;margin-bottom:12px;">
-      <button v-if="can('dashboard', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
+      <button v-if="can('dashboard', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
     </div>
-    <div v-if="!d" class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+    <div v-if="!d" class="empty-state"><div class="icon">⏳</div><p>{{ t('جاري التحميل...') }}</p></div>
 
     <template v-if="d">
       <div class="cards-grid">
         <div class="stat-card">
           <div class="icon">💵</div>
-          <div class="label">صافي الدخل</div>
+          <div class="label">{{ t('صافي الدخل') }}</div>
           <div class="value" :class="d.stmt.netIncome >= 0 ? 'pos' : 'neg'">{{ fmt.money(d.stmt.netIncome) }}</div>
-          <div class="sub">إيرادات: {{ fmt.money(d.stmt.revenueTotal) }} - مصروفات: {{ fmt.money(d.stmt.expenseTotal) }}</div>
+          <div class="sub">{{ t('إيرادات:') }} {{ fmt.money(d.stmt.revenueTotal) }} - {{ t('مصروفات:') }} {{ fmt.money(d.stmt.expenseTotal) }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">🛍️</div>
-          <div class="label">إجمالي المبيعات</div>
+          <div class="label">{{ t('إجمالي المبيعات') }}</div>
           <div class="value pos">{{ fmt.money(d.sales) }}</div>
-          <div class="sub">عدد فواتير البيع ضمن السنة الحالية</div>
+          <div class="sub">{{ t('عدد فواتير البيع ضمن السنة الحالية') }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">📦</div>
-          <div class="label">إجمالي المشتريات</div>
+          <div class="label">{{ t('إجمالي المشتريات') }}</div>
           <div class="value">{{ fmt.money(d.purchases) }}</div>
-          <div class="sub">فواتير الشراء خلال السنة الحالية</div>
+          <div class="sub">{{ t('فواتير الشراء خلال السنة الحالية') }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">💳</div>
-          <div class="label">النقدية</div>
+          <div class="label">{{ t('النقدية') }}</div>
           <div class="value">{{ fmt.money(d.cash) }}</div>
-          <div class="sub">الصندوق: {{ fmt.money(d.cash) }}</div>
+          <div class="sub">{{ t('الصندوق:') }} {{ fmt.money(d.cash) }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">🏦</div>
-          <div class="label">البنك</div>
+          <div class="label">{{ t('البنك') }}</div>
           <div class="value">{{ fmt.money(d.bank) }}</div>
-          <div class="sub">رصيد البنك الرئيسي</div>
+          <div class="sub">{{ t('رصيد البنك الرئيسي') }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">📥</div>
-          <div class="label">ذمم مدينة (عملاء)</div>
+          <div class="label">{{ t('ذمم مدينة (عملاء)') }}</div>
           <div class="value">{{ fmt.money(d.receivables) }}</div>
-          <div class="sub">مبالغ مستحقة على العملاء</div>
+          <div class="sub">{{ t('مبالغ مستحقة على العملاء') }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">📤</div>
-          <div class="label">ذمم دائنة (موردون)</div>
+          <div class="label">{{ t('ذمم دائنة (موردون)') }}</div>
           <div class="value">{{ fmt.money(d.payables) }}</div>
-          <div class="sub">مبالغ مستحقة للموردين</div>
+          <div class="sub">{{ t('مبالغ مستحقة للموردين') }}</div>
         </div>
         <div class="stat-card">
           <div class="icon">🧾</div>
-          <div class="label">ضريبة القيمة المضافة</div>
+          <div class="label">{{ t('ضريبة القيمة المضافة') }}</div>
           <div class="value">{{ fmt.money(info.vat ? info.vat.netDue : 0) }}</div>
-          <div class="sub">صافي الضريبة المستحقة للهيئة</div>
+          <div class="sub">{{ t('صافي الضريبة المستحقة للهيئة') }}</div>
         </div>
       </div>
 
       <div class="panel">
-        <div class="panel-header"><h3>المبيعات الشهرية - سنة {{ d.fy.name }}</h3></div>
+        <div class="panel-header"><h3>{{ t('المبيعات الشهرية - سنة {fy}', { fy: d.fy.name }) }}</h3></div>
         <div class="panel-body">
           <div style="display:flex;align-items:flex-end;gap:10px;height:180px;padding:10px 0;">
             <div v-for="m in d.salesByMonth" :key="m.m" style="flex:1;text-align:center;">
@@ -116,18 +116,18 @@ const DashboardView = {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="responsive-2">
         <div class="panel">
-          <div class="panel-header"><h3>أحدث القيود اليومية</h3></div>
+          <div class="panel-header"><h3>{{ t('أحدث القيود اليومية') }}</h3></div>
           <div class="panel-body pad-0">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>رقم القيد</th><th>التاريخ</th><th>البيان</th></tr></thead>
+                <thead><tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="e in d.recentEntries" :key="e.id">
                     <td class="monospace">{{ e.entry_no }}</td>
                     <td>{{ fmt.date(e.date) }}</td>
                     <td style="white-space:normal;max-width:220px;">{{ e.description }}</td>
                   </tr>
-                  <tr v-if="!d.recentEntries.length"><td colspan="3" class="muted">لا توجد قيود بعد</td></tr>
+                  <tr v-if="!d.recentEntries.length"><td colspan="3" class="muted">{{ t('لا توجد قيود بعد') }}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -135,20 +135,20 @@ const DashboardView = {
         </div>
 
         <div class="panel">
-          <div class="panel-header"><h3>أحدث الفواتير</h3></div>
+          <div class="panel-header"><h3>{{ t('أحدث الفواتير') }}</h3></div>
           <div class="panel-body pad-0">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>رقم الفاتورة</th><th>النوع</th><th>التاريخ</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
+                <thead><tr><th>{{ t('رقم الفاتورة') }}</th><th>{{ t('النوع') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('الإجمالي') }}</th><th>{{ t('الحالة') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="i in d.recentInvoices" :key="i.id">
                     <td class="monospace">{{ i.invoice_no }}</td>
-                    <td>{{ i.kind === 'sale' ? 'بيع' : 'شراء' }}</td>
+                    <td>{{ i.kind === 'sale' ? t('بيع') : t('شراء') }}</td>
                     <td>{{ fmt.date(i.date) }}</td>
                     <td class="num">{{ fmt.money(i.total) }}</td>
                     <td><span class="badge" :class="fmt.invStatus(i.status).c">{{ fmt.invStatus(i.status).t }}</span></td>
                   </tr>
-                  <tr v-if="!d.recentInvoices.length"><td colspan="5" class="muted">لا توجد فواتير بعد</td></tr>
+                  <tr v-if="!d.recentInvoices.length"><td colspan="5" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
                 </tbody>
               </table>
             </div>

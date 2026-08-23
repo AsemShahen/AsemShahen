@@ -322,3 +322,27 @@ table.kv td:first-child { color: var(--text-muted); white-space: nowrap; width: 
   .form-grid label.span2 { grid-column: span 1; }
   .responsive-2 { grid-template-columns: 1fr !important; }
 }
+
+/* ==================== مبدّل اللغة ==================== */
+.lang-select {
+  padding: 5px 10px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: #333;
+}
+.topbar .lang-select { background: var(--bg, #f5f7fa); }
+
+/* ==================== تنسيقات الواجهة الإنجليزية (LTR) ==================== */
+html[dir="ltr"] body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+html[dir="ltr"] .num,
+html[dir="ltr"] .monospace { text-align: right; }
+html[dir="ltr"] .entry-lines .line-row .num,
+html[dir="ltr"] .stat-card .value { text-align: right; }
+html[dir="ltr"] .table-wrap td[dir="ltr"] { text-align: left; }
+html[dir="ltr"] .flex-between { text-align: left; }
+html[dir="ltr"] .statement-box { text-align: left; }
+html[dir="ltr"] .login-card h1,
+html[dir="ltr"] .brand-banner h1 { text-align: center; }

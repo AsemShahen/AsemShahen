@@ -20,7 +20,7 @@ const ClosingView = {
         const r = await this.api(`/api/companies/${this.company.id}/close-year`, {
           method: 'POST', body: { new_year_start_date: this.newYearDate || undefined }
         });
-        this.toast(`تم إقفال السنة بنجاح. صافي النتيجة: ${this.fmt.money(r.netIncome)}. تم فتح السنة ${r.nextName}`);
+        this.toast(t('تم إقفال السنة بنجاح. صافي النتيجة: {x}. تم فتح السنة {y}', { x: this.fmt.money(r.netIncome), y: r.nextName }));
         this.confirmClose = false;
         await this.load();
         this.$emit('refresh');
@@ -30,7 +30,7 @@ const ClosingView = {
     exportYears() {
       const rows = this.years.map(y => [
         y.name, y.start_date, y.end_date,
-        y.status === 'open' ? 'مفتوحة' : 'مقفلة',
+        y.status === 'open' ? t('مفتوحة') : t('مقفلة'),
         y.closed_at ? y.closed_at.slice(0, 10) : ''
       ]);
       this.exportCsv(`fiscal-years-${this.company.id}`, ['year', 'start', 'end', 'status', 'closed_at'], rows);
@@ -49,53 +49,53 @@ const ClosingView = {
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
     <div v-if="activeYear" class="panel" style="border-color:var(--primary);">
-      <div class="panel-header"><h3>إقفال السنة المالية {{ activeYear.name }} وترحيل الأرصدة</h3></div>
+      <div class="panel-header"><h3>{{ t('إقفال السنة المالية {y} وترحيل الأرصدة', { y: activeYear.name }) }}</h3></div>
       <div class="panel-body">
         <div class="cards-grid" style="margin-bottom:0;">
           <div class="stat-card">
-            <div class="label">بداية السنة</div>
+            <div class="label">{{ t('بداية السنة') }}</div>
             <div class="value" style="font-size:18px;">{{ activeYear.start_date }}</div>
           </div>
           <div class="stat-card">
-            <div class="label">نهاية السنة</div>
+            <div class="label">{{ t('نهاية السنة') }}</div>
             <div class="value" style="font-size:18px;">{{ activeYear.end_date }}</div>
           </div>
           <div class="stat-card">
-            <div class="label">الحالة</div>
-            <div class="value" style="font-size:18px;"><span class="badge green">مفتوحة</span></div>
+            <div class="label">{{ t('الحالة') }}</div>
+            <div class="value" style="font-size:18px;"><span class="badge green">{{ t('مفتوحة') }}</span></div>
           </div>
         </div>
 
         <div class="alert info">
-          عند إقفال السنة يقوم النظام تلقائياً بما يلي:
+          {{ t('عند إقفال السنة يقوم النظام تلقائياً بما يلي:') }}
           <ul style="margin-top:8px;padding-right:18px;">
-            <li>إقفال حسابات الإيرادات والمصروفات وترحيل صافي النتيجة إلى <strong>الأرباح المحتجزة</strong>.</li>
-            <li>فتح سنة مالية جديدة ({{ Number(activeYear.name) + 1 }}).</li>
-            <li>ترحيل أرصدة حسابات الميزانية (أصول، خصوم، حقوق ملكية) كأرصدة افتتاحية للسنة الجديدة.</li>
-            <li>تصفير حسابات الإيرادات والمصروفات للسنة الجديدة.</li>
+            <li>{{ t('إقفال حسابات الإيرادات والمصروفات وترحيل صافي النتيجة إلى الأرباح المحتجزة.') }}</li>
+            <li>{{ t('فتح سنة مالية جديدة ({y}).', { y: Number(activeYear.name) + 1 }) }}</li>
+            <li>{{ t('ترحيل أرصدة حسابات الميزانية (أصول، خصوم، حقوق ملكية) كأرصدة افتتاحية للسنة الجديدة.') }}</li>
+            <li>{{ t('تصفير حسابات الإيرادات والمصروفات للسنة الجديدة.') }}</li>
           </ul>
         </div>
 
         <div class="flex flex-wrap mt-2">
           <label style="display:flex;align-items:center;gap:8px;">
-            تاريخ بداية السنة الجديدة (اختياري):
+            {{ t('تاريخ بداية السنة الجديدة (اختياري):') }}
             <input type="date" v-model="newYearDate" :placeholder="suggestedDate">
           </label>
-          <button v-if="can('closing', 'edit')" class="btn btn-danger" @click="confirmClose = true" :disabled="closing">🔒 إقفال سنة {{ activeYear.name }} وترحيل الحسابات</button>
+          <button v-if="can('closing', 'edit')" class="btn btn-danger" @click="confirmClose = true" :disabled="closing">🔒 {{ t('إقفال سنة {y} وترحيل الحسابات', { y: activeYear.name }) }}</button>
         </div>
       </div>
     </div>
 
     <div class="panel">
       <div class="panel-header">
-        <h3>السنوات المالية</h3>
-        <button v-if="can('closing', 'export')" class="btn btn-sm btn-ghost" @click="exportYears">⬇️ تصدير CSV</button>
+        <h3>{{ t('السنوات المالية') }}</h3>
+        <button v-if="can('closing', 'export')" class="btn btn-sm btn-ghost" @click="exportYears">⬇️ {{ t('تصدير CSV') }}</button>
       </div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>السنة</th><th>البداية</th><th>النهاية</th><th>الحالة</th><th>تاريخ الإقفال</th></tr>
+              <tr><th>{{ t('السنة') }}</th><th>{{ t('البداية') }}</th><th>{{ t('النهاية') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('تاريخ الإقفال') }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="y in years" :key="y.id">
@@ -104,12 +104,12 @@ const ClosingView = {
                 <td class="monospace">{{ y.end_date }}</td>
                 <td>
                   <span class="badge" :class="y.status === 'open' ? 'green' : 'gray'">
-                    {{ y.status === 'open' ? 'مفتوحة (الحالية)' : 'مقفلة' }}
+                    {{ y.status === 'open' ? t('مفتوحة (الحالية)') : t('مقفلة') }}
                   </span>
                 </td>
                 <td class="monospace">{{ y.closed_at ? fmt.date(y.closed_at.slice(0, 10)) : '—' }}</td>
               </tr>
-              <tr v-if="!years.length"><td colspan="5" class="muted">لا توجد سنوات مالية</td></tr>
+              <tr v-if="!years.length"><td colspan="5" class="muted">{{ t('لا توجد سنوات مالية') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -118,11 +118,11 @@ const ClosingView = {
 
     <div v-if="confirmClose" class="modal-overlay" @click.self="confirmClose = false">
       <div class="modal" style="max-width:460px;border-top:4px solid var(--danger);">
-        <h3>تأكيد إقفال السنة {{ activeYear.name }}</h3>
-        <p>سيتم تنفيذ قيود الإقفال والترحيل بشكل نهائي ولا يمكن التراجع بعد الإقفال. هل أنت متأكد؟</p>
+        <h3>{{ t('تأكيد إقفال السنة {y}', { y: activeYear.name }) }}</h3>
+        <p>{{ t('سيتم تنفيذ قيود الإقفال والترحيل بشكل نهائي ولا يمكن التراجع بعد الإقفال. هل أنت متأكد؟') }}</p>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="confirmClose = false">تراجع</button>
-          <button class="btn btn-danger" @click="doClose" :disabled="closing">{{ closing ? 'جارٍ الإقفال...' : 'نعم، إقفال وترحيل' }}</button>
+          <button class="btn btn-ghost" @click="confirmClose = false">{{ t('تراجع') }}</button>
+          <button class="btn btn-danger" @click="doClose" :disabled="closing">{{ closing ? t('جارٍ الإقفال...') : t('نعم، إقفال وترحيل') }}</button>
         </div>
       </div>
     </div>
@@ -157,7 +157,7 @@ const SettingsView = {
       this.saving = true;
       try {
         await this.api(`/api/companies/${this.company.id}`, { method: 'PUT', body: this.form });
-        this.toast('تم حفظ الإعدادات');
+        this.toast(t('تم حفظ الإعدادات'));
         this.$emit('refresh');
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.saving = false; }
@@ -189,7 +189,7 @@ const SettingsView = {
         if (this.zatcaForm.certB64) body.certB64 = this.zatcaForm.certB64;
         if (this.zatcaForm.otp) body.otp = this.zatcaForm.otp;
         const saved = await this.api(`/api/companies/${this.company.id}/zatca-settings`, { method: 'PUT', body });
-        this.toast(saved.configured ? 'تم حفظ بيانات ZATCA وسيتم إرسال الفواتير تلقائياً عند الحفظ' : 'تم الحفظ. أضف بيانات الاعتماد (CSID) لتفعيل الإرسال التلقائي');
+        this.toast(saved.configured ? t('تم حفظ بيانات ZATCA وسيتم إرسال الفواتير تلقائياً عند الحفظ') : t('تم الحفظ. أضف بيانات الاعتماد (CSID) لتفعيل الإرسال التلقائي'));
         await this.loadZatca();
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.savingZatca = false; }
@@ -198,89 +198,89 @@ const SettingsView = {
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
-    <div v-if="!can('settings', 'edit')" class="alert info">أنت تملك صلاحية العرض فقط لهذه النافذة — لا يمكنك تعديل البيانات أو إعدادات ZATCA.</div>
+    <div v-if="!can('settings', 'edit')" class="alert info">{{ t('أنت تملك صلاحية العرض فقط لهذه النافذة — لا يمكنك تعديل البيانات أو إعدادات ZATCA.') }}</div>
     <div class="panel" style="max-width:800px;">
-      <div class="panel-header"><h3>بيانات الشركة والإعدادات</h3></div>
+      <div class="panel-header"><h3>{{ t('بيانات الشركة والإعدادات') }}</h3></div>
       <div class="panel-body">
         <div class="form-grid">
-          <label class="span2">اسم الشركة / المنشأة <input v-model.trim="form.name"></label>
-          <label>نوع النشاط
+          <label class="span2">{{ t('اسم الشركة / المنشأة') }} <input v-model.trim="form.name"></label>
+          <label>{{ t('نوع النشاط') }}
             <select v-model="form.business_type" disabled>
-              <option v-for="t in [['corporate','شركة'],['supermarket','سوبر ماركت'],['factory','مصنع'],['medical_lab','مخبر طبي']]" :key="t[0]" :value="t[0]">{{ t[1] }}</option>
+              <option v-for="bt in [['corporate','شركة'],['supermarket','سوبر ماركت'],['factory','مصنع'],['medical_lab','مخبر طبي']]" :key="bt[0]" :value="bt[0]">{{ t(bt[1]) }}</option>
             </select>
           </label>
-          <label>نسبة ضريبة القيمة المضافة (%) <input type="number" v-model.number="form.vat_rate" min="0" max="100"></label>
-          <label>رقم السجل التجاري <input v-model.trim="form.cr_number" dir="ltr"></label>
-          <label>الرقم الضريبي <input v-model.trim="form.vat_number" dir="ltr"></label>
-          <label>العملة <input v-model.trim="form.currency"></label>
-          <label>شهر بداية السنة المالية
+          <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }} <input type="number" v-model.number="form.vat_rate" min="0" max="100"></label>
+          <label>{{ t('رقم السجل التجاري') }} <input v-model.trim="form.cr_number" dir="ltr"></label>
+          <label>{{ t('الرقم الضريبي') }} <input v-model.trim="form.vat_number" dir="ltr"></label>
+          <label>{{ t('العملة') }} <input v-model.trim="form.currency"></label>
+          <label>{{ t('شهر بداية السنة المالية') }}
             <select v-model.number="form.fiscal_year_start_month">
-              <option :value="1">يناير</option><option :value="4">أبريل</option>
-              <option :value="7">يوليو</option><option :value="10">أكتوبر</option>
+              <option :value="1">{{ t('يناير') }}</option><option :value="4">{{ t('أبريل') }}</option>
+              <option :value="7">{{ t('يوليو') }}</option><option :value="10">{{ t('أكتوبر') }}</option>
             </select>
           </label>
-          <label class="span2">العنوان <input v-model.trim="form.address"></label>
-          <label>الهاتف <input v-model.trim="form.phone" dir="ltr"></label>
-          <label>البريد الإلكتروني <input v-model.trim="form.email" dir="ltr"></label>
+          <label class="span2">{{ t('العنوان') }} <input v-model.trim="form.address"></label>
+          <label>{{ t('الهاتف') }} <input v-model.trim="form.phone" dir="ltr"></label>
+          <label>{{ t('البريد الإلكتروني') }} <input v-model.trim="form.email" dir="ltr"></label>
         </div>
         <div class="modal-actions">
-          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات' }}</button>
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الإعدادات') }}</button>
         </div>
       </div>
     </div>
 
     <div class="panel" style="max-width:800px;border-top:4px solid var(--primary);">
-      <div class="panel-header"><h3>الفاتورة الإلكترونية والربط مع هيئة الزكاة (ZATCA)</h3></div>
+      <div class="panel-header"><h3>{{ t('الفاتورة الإلكترونية والربط مع هيئة الزكاة (ZATCA)') }}</h3></div>
       <div class="panel-body">
         <div class="alert info">
-          عند تفعيل هذه الإعدادات تُنشأ فاتورة إلكترونية متوافقة (QR + XML بصيغة UBL 2.1) وتُرسل تلقائياً إلى منظومة فاتورة الإلكترونية عند حفظ أي فاتورة بيع.
-          للحصول على بيانات الاعتماد (CSID) يلزم التسجيل في بوابة هيئة الزكاة (Sandbox للتجربة ثم Production بعد اعتماد المنشأة).
+          {{ t('عند تفعيل هذه الإعدادات تُنشأ فاتورة إلكترونية متوافقة (QR + XML بصيغة UBL 2.1) وتُرسل تلقائياً إلى منظومة فاتورة الإلكترونية عند حفظ أي فاتورة بيع.') }}
+          {{ t('للحصول على بيانات الاعتماد (CSID) يلزم التسجيل في بوابة هيئة الزكاة (Sandbox للتجربة ثم Production بعد اعتماد المنشأة).') }}
           <ul style="margin-top:8px;padding-right:18px;">
-            <li><strong>وضع Sandbox:</strong> للاختبار والتجربة (عنوان افتراضي sandbox.zatca.gov.sa).</li>
-            <li><strong>وضع Production:</strong> للإنتاج الفعلي بعد الحصول على CSID الإنتاجي (عنوان افتراضي einvoice.zatca.gov.sa).</li>
-            <li>مفتاح التشفير الخاص والشهادة (ECDSA P-256) يولّدان داخل المنشأة عند إنشاء شهادة CSID.</li>
+            <li>{{ t('وضع Sandbox: للاختبار والتجربة (عنوان افتراضي sandbox.zatca.gov.sa).') }}</li>
+            <li>{{ t('وضع Production: للإنتاج الفعلي بعد الحصول على CSID الإنتاجي (عنوان افتراضي einvoice.zatca.gov.sa).') }}</li>
+            <li>{{ t('مفتاح التشفير الخاص والشهادة (ECDSA P-256) يولّدان داخل المنشأة عند إنشاء شهادة CSID.') }}</li>
           </ul>
         </div>
 
         <div v-if="zatca" class="flex flex-wrap" style="gap:8px;margin-bottom:14px;">
-          <span class="badge" :class="zatca.active ? 'green' : 'gray'">{{ zatca.active ? 'التفعيل مفعّل' : 'غير مفعّل' }}</span>
-          <span class="badge" :class="zatca.configured ? 'green' : 'yellow'">{{ zatca.configured ? 'جاهز للإرسال' : 'ينقص بيانات الاعتماد' }}</span>
-          <span class="badge gray">{{ zatca.mode === 'production' ? 'وضع الإنتاج' : 'وضع التجربة (Sandbox)' }}</span>
+          <span class="badge" :class="zatca.active ? 'green' : 'gray'">{{ zatca.active ? t('التفعيل مفعّل') : t('غير مفعّل') }}</span>
+          <span class="badge" :class="zatca.configured ? 'green' : 'yellow'">{{ zatca.configured ? t('جاهز للإرسال') : t('ينقص بيانات الاعتماد') }}</span>
+          <span class="badge gray">{{ zatca.mode === 'production' ? t('وضع الإنتاج') : t('وضع التجربة (Sandbox)') }}</span>
         </div>
 
         <div class="form-grid">
           <label class="span2 flex" style="flex-direction:row;gap:8px;">
-            <input type="checkbox" v-model="zatcaForm.active" style="width:auto;"> تفعيل الإرسال التلقائي إلى ZATCA
+            <input type="checkbox" v-model="zatcaForm.active" style="width:auto;"> {{ t('تفعيل الإرسال التلقائي إلى ZATCA') }}
           </label>
-          <label>الوضع
+          <label>{{ t('الوضع') }}
             <select v-model="zatcaForm.mode">
-              <option value="sandbox">Sandbox (تجربة)</option>
-              <option value="production">Production (إنتاج)</option>
+              <option value="sandbox">{{ t('Sandbox (تجربة)') }}</option>
+              <option value="production">{{ t('Production (إنتاج)') }}</option>
             </select>
           </label>
-          <label>عنوان منظومة فاتورة (اختياري)
+          <label>{{ t('عنوان منظومة فاتورة (اختياري)') }}
             <input v-model.trim="zatcaForm.baseUrl" dir="ltr" placeholder="sandbox.zatca.gov.sa">
           </label>
-          <label class="span2">رقم CSID (بيانات الاعتماد)
-            <input v-model.trim="zatcaForm.csid" dir="ltr" placeholder="ألصق قيمة CSID (تُترك فارغة للاحتفاظ بالموجود)">
+          <label class="span2">{{ t('رقم CSID (بيانات الاعتماد)') }}
+            <input v-model.trim="zatcaForm.csid" dir="ltr" :placeholder="t('ألصق قيمة CSID (تُترك فارغة للاحتفاظ بالموجود)')">
           </label>
-          <label class="span2">المفتاح الخاص (PEM)
+          <label class="span2">{{ t('المفتاح الخاص (PEM)') }}
             <textarea v-model.trim="zatcaForm.privateKeyPem" dir="ltr" rows="3" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
           </label>
-          <label class="span2">الشهادة (base64)
-            <textarea v-model.trim="zatcaForm.certB64" dir="ltr" rows="2" placeholder="شهادة X.509 بصيغة base64"></textarea>
+          <label class="span2">{{ t('الشهادة (base64)') }}
+            <textarea v-model.trim="zatcaForm.certB64" dir="ltr" rows="2" :placeholder="t('شهادة X.509 بصيغة base64')"></textarea>
           </label>
-          <label>رقم الجهاز (اختياري)
+          <label>{{ t('رقم الجهاز (اختياري)') }}
             <input v-model.trim="zatcaForm.deviceSerialNumber" dir="ltr" placeholder="Device Serial Number">
           </label>
-          <label>OTP (للحصول على CSID امتثال في Sandbox)
-            <input v-model.trim="zatcaForm.otp" dir="ltr" placeholder="رمز التحقق">
+          <label>{{ t('OTP (للحصول على CSID امتثال في Sandbox)') }}
+            <input v-model.trim="zatcaForm.otp" dir="ltr" :placeholder="t('رمز التحقق')">
           </label>
         </div>
 
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
-          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? 'جارٍ الحفظ...' : 'حفظ إعدادات ZATCA' }}</button>
-          <span class="muted" v-if="zatca && !zatca.csidSet">الرقم الضريبي للمنشأة يُقرأ من "بيانات الشركة" أعلاه.</span>
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? t('جارٍ الحفظ...') : t('حفظ إعدادات ZATCA') }}</button>
+          <span class="muted" v-if="zatca && !zatca.csidSet">{{ t('الرقم الضريبي للمنشأة يُقرأ من "بيانات الشركة" أعلاه.') }}</span>
         </div>
       </div>
     </div>

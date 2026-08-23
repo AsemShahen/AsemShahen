@@ -65,13 +65,13 @@ const App = {
     },
     currentNavLabel() {
       const item = NAV_ITEMS.find(i => i.key === this.view);
-      return item ? item.label : '';
+      return item ? t(item.label) : '';
     },
     navItems() {
       return NAV_ITEMS.filter(i => {
         if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
         return can(i.key, 'view');
-      });
+      }).map(i => ({ ...i, label: t(i.label) }));
     },
     printStore() { return printStore; }
   },
@@ -81,7 +81,7 @@ const App = {
     async api(path, opts = {}) {
       const r = await apiFetch(path, opts);
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || 'خطأ في الطلب');
+      if (!r.ok) throw new Error(data.error || t('خطأ في الطلب'));
       return data;
     },
     async doLogin() {
@@ -93,7 +93,7 @@ const App = {
           body: JSON.stringify({ username: this.loginForm.username, password: this.loginForm.password })
         });
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'فشل تسجيل الدخول');
+        if (!r.ok) throw new Error(data.error || t('فشل تسجيل الدخول'));
         localStorage.setItem('muhasib_token', data.token);
         setAuthUser(data.user);
         this.authUser = data.user;
@@ -171,7 +171,7 @@ const App = {
           body: JSON.stringify(this.newCompany)
         });
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'خطأ');
+        if (!r.ok) throw new Error(data.error || t('خطأ'));
         this.openCreateCompany = false;
         this.newCompany = { name: '', business_type: 'corporate', cr_number: '', vat_number: '', vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '', email: '' };
         await this.loadCompanies();
@@ -209,4 +209,7 @@ const App = {
   template: document.getElementById('app').innerHTML
 };
 
-createApp(App).mount('#app');
+const app = createApp(App);
+app.config.globalProperties.t = t;
+app.config.globalProperties.i18n = I18N;
+app.mount('#app');

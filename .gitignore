@@ -1,15 +1,7 @@
 # Auto-sync script (not synced)
 auto-sync.ps1
 
-# Dependencies
-node_modules/
-
-# Runtime data (databases, logs)
-data/
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
+# Logs
 *.log
 
 # Environment

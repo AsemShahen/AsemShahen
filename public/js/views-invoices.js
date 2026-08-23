@@ -16,7 +16,7 @@ const InvoicesView = {
   async created() { await this.load(); },
   computed: {
     isSale() { return this.kind === 'sale'; },
-    title() { return this.isSale ? 'فواتير البيع' : 'فواتير الشراء'; },
+    title() { return this.isSale ? t('فواتير البيع') : t('فواتير الشراء'); },
     partyType() { return this.isSale ? 'customer' : 'supplier'; },
     win() { return this.isSale ? 'invoices-sale' : 'invoices-purchase'; },
     filteredInvoices() {
@@ -72,7 +72,7 @@ const InvoicesView = {
           lines: this.form.lines.map(l => ({ description: l.description, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, discount: Number(l.discount) || 0 }))
         };
         await this.api(`/api/companies/${this.company.id}/invoices`, { method: 'POST', body });
-        this.toast('تم إنشاء الفاتورة وتسجيل القيد المحاسبي تلقائياً');
+        this.toast(t('تم إنشاء الفاتورة وتسجيل القيد المحاسبي تلقائياً'));
         this.showModal = false;
         await this.load();
         this.$emit('refresh');
@@ -88,7 +88,7 @@ const InvoicesView = {
         await this.api(`/api/companies/${this.company.id}/invoices/${this.payModal.inv.id}/pay`, {
           method: 'POST', body: { amount: Number(this.payModal.amount), method: this.payModal.method, date: new Date().toISOString().slice(0, 10) }
         });
-        this.toast('تم تسجيل الدفعة');
+        this.toast(t('تم تسجيل الدفعة'));
         this.payModal = null;
         await this.load();
         this.$emit('refresh');
@@ -123,7 +123,7 @@ const InvoicesView = {
       this.detailLoading = true;
       try {
         const inv = await this.api(`/api/companies/${this.company.id}/invoices/${this.detail.id}/resubmit`, { method: 'POST' });
-        this.toast(inv.zatca_status === 'failed' ? 'فشل الإرسال إلى هيئة الزكاة: ' + (inv.zatca_response || '') : 'تم إرسال الفاتورة إلى هيئة الزكاة');
+        this.toast(inv.zatca_status === 'failed' ? t('فشل الإرسال إلى هيئة الزكاة: {msg}', { msg: inv.zatca_response || '' }) : t('تم إرسال الفاتورة إلى هيئة الزكاة'));
         this.detail = null;
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
@@ -138,8 +138,8 @@ const InvoicesView = {
       ]);
       this.openPrintPreview({
         title: this.title,
-        sub: `${this.company.name} - السنة المالية ${this.info.active_fiscal_year ? this.info.active_fiscal_year.name : ''}`,
-        cols: ['رقم الفاتورة', 'الطرف', 'التاريخ', 'الإجمالي', 'الضريبة', 'طريقة الدفع', 'المدفوع', 'الحالة'],
+        sub: `${this.company.name} - ${t('السنة المالية {fy}', { fy: this.info.active_fiscal_year ? this.info.active_fiscal_year.name : '' })}`,
+        cols: [t('رقم الفاتورة'), t('الطرف'), t('التاريخ'), t('الإجمالي'), t('الضريبة'), t('طريقة الدفع'), t('المدفوع'), t('الحالة')],
         rows
       });
     },
@@ -154,14 +154,14 @@ const InvoicesView = {
     importData() {
       this.importJsonFile(async (data) => {
         const items = Array.isArray(data) ? data : (data.invoices || []);
-        if (!items.length) return this.toast('لا توجد فواتير في الملف', 'error');
+        if (!items.length) return this.toast(t('لا توجد فواتير في الملف'), 'error');
         let ok = 0, fail = 0;
         for (const it of items) {
           try {
             let partyId = null;
             if (it.party_name) {
               const p = this.parties.find(x => x.name === it.party_name);
-              if (!p) throw new Error('طرف غير موجود: ' + it.party_name);
+              if (!p) throw new Error(t('طرف غير موجود: {name}', { name: it.party_name }));
               partyId = p.id;
             }
             await this.api(`/api/companies/${this.company.id}/invoices`, {
@@ -186,7 +186,7 @@ const InvoicesView = {
             ok++;
           } catch (e) { fail++; }
         }
-        this.toast(`تم استيراد ${ok} فاتورة، فشل ${fail}`);
+        this.toast(t('تم استيراد {ok} فاتورة، فشل {fail}', { ok, fail }));
         await this.load();
       });
     }
@@ -197,15 +197,15 @@ const InvoicesView = {
 
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
-        <input v-if="can(win, 'search')" placeholder="بحث برقم الفاتورة أو الطرف أو الرقم الضريبي..." v-model="filter" style="min-width:260px;">
-        <p class="muted">عدد الفواتير: {{ invoices.length }}</p>
+        <input v-if="can(win, 'search')" :placeholder="t('بحث برقم الفاتورة أو الطرف أو الرقم الضريبي...')" v-model="filter" style="min-width:260px;">
+        <p class="muted">{{ t('عدد الفواتير: {n}', { n: invoices.length }) }}</p>
       </div>
       <div class="flex flex-wrap">
-        <button v-if="can(win, 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
-        <button v-if="can(win, 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
-        <button v-if="can(win, 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
-        <button v-if="can(win, 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
-        <button v-if="can(win, 'add')" class="btn btn-primary" @click="openCreate">+ فاتورة {{ isSale ? 'بيع' : 'شراء' }} جديدة</button>
+        <button v-if="can(win, 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
+        <button v-if="can(win, 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
+        <button v-if="can(win, 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
+        <button v-if="can(win, 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ {{ t('استيراد JSON') }}</button>
+        <button v-if="can(win, 'add')" class="btn btn-primary" @click="openCreate">+ {{ t('فاتورة') }} {{ isSale ? t('بيع') : t('شراء') }} {{ t('جديدة') }}</button>
       </div>
     </div>
 
@@ -216,9 +216,9 @@ const InvoicesView = {
           <table>
             <thead>
               <tr>
-                <th>رقم الفاتورة</th><th>{{ isSale ? 'العميل' : 'المورد' }}</th><th>التاريخ</th>
-                <th>الإجمالي</th><th>الضريبة</th><th>طريقة الدفع</th><th>المدفوع</th><th>الحالة</th>
-                <th v-if="isSale">الفاتورة الإلكترونية (ZATCA)</th><th></th>
+                <th>{{ t('رقم الفاتورة') }}</th><th>{{ isSale ? t('العميل') : t('المورد') }}</th><th>{{ t('التاريخ') }}</th>
+                <th>{{ t('الإجمالي') }}</th><th>{{ t('الضريبة') }}</th><th>{{ t('طريقة الدفع') }}</th><th>{{ t('المدفوع') }}</th><th>{{ t('الحالة') }}</th>
+                <th v-if="isSale">{{ t('الفاتورة الإلكترونية (ZATCA)') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -235,11 +235,11 @@ const InvoicesView = {
                   <span class="badge" :class="fmt.zatcaStatus(i.zatca_status).c">{{ fmt.zatcaStatus(i.zatca_status).t }}</span>
                 </td>
                 <td>
-                  <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">تحصيل / سداد</button>
-                  <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">تفاصيل</button>
+                  <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">{{ t('تحصيل / سداد') }}</button>
+                  <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
                 </td>
               </tr>
-              <tr v-if="!invoices.length"><td :colspan="isSale ? 10 : 9" class="muted">لا توجد فواتير بعد</td></tr>
+              <tr v-if="!invoices.length"><td :colspan="isSale ? 10 : 9" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -248,36 +248,36 @@ const InvoicesView = {
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
       <div class="modal" style="max-width:920px;">
-        <h3>فاتورة {{ isSale ? 'بيع' : 'شراء' }} جديدة</h3>
+        <h3>{{ t('فاتورة') }} {{ isSale ? t('بيع') : t('شراء') }} {{ t('جديدة') }}</h3>
         <div class="form-grid">
-          <label>{{ isSale ? 'العميل' : 'المورد' }}
+          <label>{{ isSale ? t('العميل') : t('المورد') }}
             <select v-model="form.party_id">
-              <option value="">اختر...</option>
+              <option value="">{{ t('اختر...') }}</option>
               <option v-for="p in parties" :key="p.id" :value="p.id">{{ p.name }}{{ p.tax_id ? ' (' + p.tax_id + ')' : '' }}</option>
             </select>
           </label>
-          <label>التاريخ <input type="date" v-model="form.date"></label>
-          <label>نسبة الضريبة (%) <input type="number" v-model.number="form.vat_rate"></label>
-          <label>طريقة الدفع
+          <label>{{ t('التاريخ') }} <input type="date" v-model="form.date"></label>
+          <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.vat_rate"></label>
+          <label>{{ t('طريقة الدفع') }}
             <select v-model="form.payment_method">
               <option v-for="m in methods" :key="m.code" :value="m.code">{{ m.name }}</option>
             </select>
           </label>
-          <label v-if="form.payment_method === 'credit' || form.payment_method === 'check'">المبلغ المدفوع الآن
+          <label v-if="form.payment_method === 'credit' || form.payment_method === 'check'">{{ t('المبلغ المدفوع الآن') }}
             <input type="number" v-model.number="form.paid_amount" placeholder="0.00">
           </label>
-          <label>الخصم على الفاتورة
+          <label>{{ t('الخصم على الفاتورة') }}
             <input type="number" v-model.number="form.discount" placeholder="0.00">
           </label>
-          <label class="span2">ملاحظات <input v-model.trim="form.notes"></label>
+          <label class="span2">{{ t('ملاحظات') }} <input v-model.trim="form.notes"></label>
         </div>
 
         <div class="entry-lines mt-2">
           <div class="line-row line-head" style="grid-template-columns:1.6fr 90px 120px 120px 110px 40px;">
-            <span>الوصف</span><span>الكمية</span><span>سعر الوحدة</span><span>خصم السطر</span><span>الإجمالي</span><span></span>
+            <span>{{ t('الوصف') }}</span><span>{{ t('الكمية') }}</span><span>{{ t('سعر الوحدة') }}</span><span>{{ t('خصم السطر') }}</span><span>{{ t('الإجمالي') }}</span><span></span>
           </div>
           <div class="line-row" style="grid-template-columns:1.6fr 90px 120px 120px 110px 40px;" v-for="(l, idx) in form.lines" :key="idx">
-            <input v-model.trim="l.description" placeholder="وصف الصنف / الخدمة...">
+            <input v-model.trim="l.description" :placeholder="t('وصف الصنف / الخدمة...')">
             <input type="number" v-model.number="l.qty" min="0">
             <input type="number" v-model.number="l.unit_price" min="0">
             <input type="number" v-model.number="l.discount" min="0">
@@ -287,75 +287,75 @@ const InvoicesView = {
         </div>
 
         <div class="flex-between mt-2">
-          <button class="btn btn-ghost" @click="addLine">+ إضافة صنف</button>
+          <button class="btn btn-ghost" @click="addLine">+ {{ t('إضافة صنف') }}</button>
           <div style="text-align:left;">
-            <div>الإجمالي قبل الضريبة: <strong class="monospace">{{ fmt.money(taxable()) }}</strong></div>
-            <div>الضريبة ({{ form.vat_rate || 0 }}%): <strong class="monospace">{{ fmt.money(vatAmount()) }}</strong></div>
-            <div style="font-size:16px;">الإجمالي: <strong class="monospace" style="color:var(--primary);">{{ fmt.money(total()) }}</strong></div>
+            <div>{{ t('الإجمالي قبل الضريبة:') }} <strong class="monospace">{{ fmt.money(taxable()) }}</strong></div>
+            <div>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }} <strong class="monospace">{{ fmt.money(vatAmount()) }}</strong></div>
+            <div style="font-size:16px;">{{ t('الإجمالي:') }} <strong class="monospace" style="color:var(--primary);">{{ fmt.money(total()) }}</strong></div>
           </div>
         </div>
 
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showModal = false">إلغاء</button>
-          <button class="btn btn-primary" @click="save" :disabled="!canSave || saving">{{ saving ? 'جارٍ الحفظ...' : 'حفظ الفاتورة' }}</button>
+          <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
+          <button class="btn btn-primary" @click="save" :disabled="!canSave || saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الفاتورة') }}</button>
         </div>
       </div>
     </div>
 
     <div v-if="payModal" class="modal-overlay" @click.self="payModal = null">
       <div class="modal" style="max-width:420px;">
-        <h3>{{ isSale ? 'تحصيل' : 'سداد' }} - {{ payModal.inv.invoice_no }}</h3>
+        <h3>{{ isSale ? t('تحصيل') : t('سداد') }} - {{ payModal.inv.invoice_no }}</h3>
         <div class="form-grid">
-          <label>المبلغ
+          <label>{{ t('المبلغ') }}
             <input type="number" v-model.number="payModal.amount" min="0" :max="remaining(payModal.inv)">
           </label>
-          <label>طريقة الدفع
+          <label>{{ t('طريقة الدفع') }}
             <select v-model="payModal.method">
               <option v-for="m in methods" :key="m.code" :value="m.code">{{ m.name }}</option>
             </select>
           </label>
         </div>
-        <p class="muted mt-2">الرصيد المتبقي: {{ fmt.money(remaining(payModal.inv)) }}</p>
+        <p class="muted mt-2">{{ t('الرصيد المتبقي:') }} {{ fmt.money(remaining(payModal.inv)) }}</p>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="payModal = null">إلغاء</button>
-          <button class="btn btn-primary" @click="doPay" :disabled="paying || Number(payModal.amount) <= 0">تأكيد الدفع</button>
+          <button class="btn btn-ghost" @click="payModal = null">{{ t('إلغاء') }}</button>
+          <button class="btn btn-primary" @click="doPay" :disabled="paying || Number(payModal.amount) <= 0">{{ t('تأكيد الدفع') }}</button>
         </div>
       </div>
     </div>
 
     <div v-if="detail" class="modal-overlay" @click.self="detail = null">
       <div class="modal" style="max-width:680px;">
-        <h3>الفاتورة الإلكترونية - {{ detail.invoice_no }}</h3>
-        <div v-if="detailLoading" class="muted">جارٍ التحميل...</div>
+        <h3>{{ t('الفاتورة الإلكترونية - {no}', { no: detail.invoice_no }) }}</h3>
+        <div v-if="detailLoading" class="muted">{{ t('جاري التحميل...') }}</div>
         <div v-else-if="detail.zatca">
           <div class="flex flex-wrap" style="gap:20px;align-items:flex-start;">
             <div style="text-align:center;">
               <img v-if="qrUrl" :src="qrUrl" alt="QR" style="border:1px solid #ddd;border-radius:8px;background:#fff;padding:6px;width:220px;height:220px;">
-              <div v-else class="muted">لا يمكن عرض QR</div>
+              <div v-else class="muted">{{ t('لا يمكن عرض QR') }}</div>
               <div class="muted" style="font-size:11px;max-width:220px;word-break:break-all;margin-top:6px;">{{ detail.zatca.qr_data }}</div>
             </div>
             <div style="flex:1;min-width:260px;">
               <table class="kv">
-                <tr><td>رقم الفاتورة</td><td class="monospace">{{ detail.zatca.invoice_no }}</td></tr>
-                <tr><td>معرّف الفاتورة (UUID)</td><td class="monospace" style="font-size:12px;">{{ detail.zatca.invoice_uuid || '—' }}</td></tr>
-                <tr><td>تاريخ/وقت الإصدار</td><td class="monospace">{{ detail.zatca.issue_datetime || '—' }}</td></tr>
-                <tr><td>نوع الفاتورة</td><td>{{ fmt.zatcaType(detail.zatca.invoice_type) }}</td></tr>
-                <tr><td>تجزئة الفاتورة</td><td class="monospace" style="font-size:11px;word-break:break-all;">{{ detail.zatca.zatca_hash || '—' }}</td></tr>
-                <tr><td>حالة الإرسال</td><td><span class="badge" :class="fmt.zatcaStatus(detail.zatca.zatca_status).c">{{ fmt.zatcaStatus(detail.zatca.zatca_status).t }}</span></td></tr>
-                <tr v-if="detail.zatca.zatca_submitted_at"><td>تاريخ الإرسال</td><td class="monospace">{{ detail.zatca.zatca_submitted_at }}</td></tr>
+                <tr><td>{{ t('رقم الفاتورة') }}</td><td class="monospace">{{ detail.zatca.invoice_no }}</td></tr>
+                <tr><td>{{ t('معرّف الفاتورة (UUID)') }}</td><td class="monospace" style="font-size:12px;">{{ detail.zatca.invoice_uuid || '—' }}</td></tr>
+                <tr><td>{{ t('تاريخ/وقت الإصدار') }}</td><td class="monospace">{{ detail.zatca.issue_datetime || '—' }}</td></tr>
+                <tr><td>{{ t('نوع الفاتورة') }}</td><td>{{ fmt.zatcaType(detail.zatca.invoice_type) }}</td></tr>
+                <tr><td>{{ t('تجزئة الفاتورة') }}</td><td class="monospace" style="font-size:11px;word-break:break-all;">{{ detail.zatca.zatca_hash || '—' }}</td></tr>
+                <tr><td>{{ t('حالة الإرسال') }}</td><td><span class="badge" :class="fmt.zatcaStatus(detail.zatca.zatca_status).c">{{ fmt.zatcaStatus(detail.zatca.zatca_status).t }}</span></td></tr>
+                <tr v-if="detail.zatca.zatca_submitted_at"><td>{{ t('تاريخ الإرسال') }}</td><td class="monospace">{{ detail.zatca.zatca_submitted_at }}</td></tr>
                 <tr v-if="detail.zatca.zatca_response && detail.zatca.zatca_status !== 'submitted' && detail.zatca.zatca_status !== 'cleared'">
-                  <td>ملاحظة النظام</td><td class="muted" style="font-size:12px;">{{ detail.zatca.zatca_response }}</td>
+                  <td>{{ t('ملاحظة النظام') }}</td><td class="muted" style="font-size:12px;">{{ detail.zatca.zatca_response }}</td>
                 </tr>
               </table>
               <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-ghost" @click="downloadXml" :disabled="!detail.zatca.xml_data">تحميل XML</button>
-                <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? 'جارٍ الإرسال...' : 'إعادة الإرسال إلى ZATCA' }}</button>
+                <button class="btn btn-sm btn-ghost" @click="downloadXml" :disabled="!detail.zatca.xml_data">{{ t('تحميل XML') }}</button>
+                <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى ZATCA') }}</button>
               </div>
             </div>
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="detail = null">إغلاق</button>
+          <button class="btn btn-ghost" @click="detail = null">{{ t('إغلاق') }}</button>
         </div>
       </div>
     </div>
@@ -375,7 +375,7 @@ const PartiesView = {
   },
   async created() { await this.load(); },
   computed: {
-    title() { return this.type === 'customer' ? 'العملاء' : 'الموردون'; },
+    title() { return this.type === 'customer' ? t('العملاء') : t('الموردون'); },
     filteredParties() {
       const f = this.filter.trim();
       if (!f) return this.parties;
@@ -403,10 +403,10 @@ const PartiesView = {
       try {
         if (this.editing) {
           await this.api(`/api/companies/${this.company.id}/parties/${this.editing.id}`, { method: 'PUT', body: this.form });
-          this.toast('تم التحديث');
+          this.toast(t('تم التحديث'));
         } else {
           await this.api(`/api/companies/${this.company.id}/parties`, { method: 'POST', body: this.form });
-          this.toast('تمت الإضافة');
+          this.toast(t('تمت الإضافة'));
         }
         this.showModal = false;
         await this.load();
@@ -418,8 +418,8 @@ const PartiesView = {
       ]);
       this.openPrintPreview({
         title: this.title,
-        sub: `${this.company.name} - ${this.type === 'customer' ? 'العملاء' : 'الموردون'}`,
-        cols: ['الاسم', 'الرقم الضريبي', 'الهاتف', 'البريد', 'المستحقات'],
+        sub: `${this.company.name} - ${this.type === 'customer' ? t('العملاء') : t('الموردون')}`,
+        cols: [t('الاسم'), t('الرقم الضريبي'), t('الهاتف'), t('البريد'), t('المستحقات')],
         rows
       });
     },
@@ -432,7 +432,7 @@ const PartiesView = {
     importData() {
       this.importJsonFile(async (data) => {
         const items = Array.isArray(data) ? data : (data.parties || []);
-        if (!items.length) return this.toast('لا توجد أطراف في الملف', 'error');
+        if (!items.length) return this.toast(t('لا توجد أطراف في الملف'), 'error');
         let ok = 0, fail = 0;
         for (const it of items) {
           try {
@@ -447,7 +447,7 @@ const PartiesView = {
             ok++;
           } catch (e) { fail++; }
         }
-        this.toast(`تم استيراد ${ok} ${this.type === 'customer' ? 'عميل' : 'مورد'}، فشل ${fail}`);
+        this.toast(t('تم استيراد {ok} {p}، فشل {fail}', { ok, p: t(this.type === 'customer' ? 'عميل' : 'مورد'), fail }));
         await this.load();
       });
     }
@@ -458,16 +458,16 @@ const PartiesView = {
 
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
-        <button class="btn" :class="type === 'customer' ? 'btn-primary' : 'btn-ghost'" @click="setType('customer')">👥 العملاء</button>
-        <button class="btn" :class="type === 'supplier' ? 'btn-primary' : 'btn-ghost'" @click="setType('supplier')">🚚 الموردون</button>
-        <input v-if="can('parties', 'search')" placeholder="بحث بالاسم أو الرقم الضريبي أو الهاتف..." v-model="filter" style="min-width:230px;">
+        <button class="btn" :class="type === 'customer' ? 'btn-primary' : 'btn-ghost'" @click="setType('customer')">👥 {{ t('العملاء') }}</button>
+        <button class="btn" :class="type === 'supplier' ? 'btn-primary' : 'btn-ghost'" @click="setType('supplier')">🚚 {{ t('الموردون') }}</button>
+        <input v-if="can('parties', 'search')" :placeholder="t('بحث بالاسم أو الرقم الضريبي أو الهاتف...')" v-model="filter" style="min-width:230px;">
       </div>
       <div class="flex flex-wrap">
-        <button v-if="can('parties', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ معاينة قبل الطباعة</button>
-        <button v-if="can('parties', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ طباعة</button>
-        <button v-if="can('parties', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ تصدير CSV</button>
-        <button v-if="can('parties', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ استيراد JSON</button>
-        <button v-if="can('parties', 'add')" class="btn btn-primary" @click="openCreate">+ {{ type === 'customer' ? 'عميل' : 'مورد' }} جديد</button>
+        <button v-if="can('parties', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
+        <button v-if="can('parties', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
+        <button v-if="can('parties', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
+        <button v-if="can('parties', 'import')" class="btn btn-sm btn-ghost" @click="importData">⬆️ {{ t('استيراد JSON') }}</button>
+        <button v-if="can('parties', 'add')" class="btn btn-primary" @click="openCreate">+ {{ type === 'customer' ? t('عميل جديد') : t('مورد جديد') }}</button>
       </div>
     </div>
 
@@ -477,7 +477,7 @@ const PartiesView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>الاسم</th><th>الرقم الضريبي</th><th>الهاتف</th><th>البريد</th><th>المستحقات</th><th></th></tr>
+              <tr><th>{{ t('الاسم') }}</th><th>{{ t('الرقم الضريبي') }}</th><th>{{ t('الهاتف') }}</th><th>{{ t('البريد') }}</th><th>{{ t('المستحقات') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="p in filteredParties" :key="p.id">
@@ -486,9 +486,9 @@ const PartiesView = {
                 <td dir="ltr" style="text-align:right;">{{ p.phone || '—' }}</td>
                 <td dir="ltr" style="text-align:right;">{{ p.email || '—' }}</td>
                 <td class="num">{{ fmt.money(p.outstanding || 0) }}</td>
-                <td><button v-if="can('parties', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(p)">تعديل</button></td>
+                <td><button v-if="can('parties', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(p)">{{ t('تعديل') }}</button></td>
               </tr>
-              <tr v-if="!parties.length"><td colspan="6" class="muted">لا يوجد {{ type === 'customer' ? 'عملاء' : 'موردون' }} بعد</td></tr>
+              <tr v-if="!parties.length"><td colspan="6" class="muted">{{ t('لا يوجد {x} بعد', { x: type === 'customer' ? t('عملاء') : t('موردون') }) }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -497,17 +497,17 @@ const PartiesView = {
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
       <div class="modal">
-        <h3>{{ editing ? 'تعديل' : 'إضافة' }} {{ type === 'customer' ? 'عميل' : 'مورد' }}</h3>
+        <h3>{{ editing ? t('تعديل') : t('إضافة') }} {{ type === 'customer' ? t('عميل') : t('مورد') }}</h3>
         <div class="form-grid">
-          <label class="span2">الاسم <input v-model.trim="form.name"></label>
-          <label>الرقم الضريبي <input v-model.trim="form.tax_id" dir="ltr" placeholder="رقم ضريبي للمنشأة"></label>
-          <label>الهاتف <input v-model.trim="form.phone" dir="ltr"></label>
-          <label class="span2">البريد الإلكتروني <input v-model.trim="form.email" dir="ltr"></label>
-          <label class="span2">العنوان <input v-model.trim="form.address"></label>
+          <label class="span2">{{ t('الاسم') }} <input v-model.trim="form.name"></label>
+          <label>{{ t('الرقم الضريبي') }} <input v-model.trim="form.tax_id" dir="ltr" :placeholder="t('رقم ضريبي للمنشأة')"></label>
+          <label>{{ t('الهاتف') }} <input v-model.trim="form.phone" dir="ltr"></label>
+          <label class="span2">{{ t('البريد الإلكتروني') }} <input v-model.trim="form.email" dir="ltr"></label>
+          <label class="span2">{{ t('العنوان') }} <input v-model.trim="form.address"></label>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showModal = false">إلغاء</button>
-          <button class="btn btn-primary" @click="save" :disabled="!form.name">حفظ</button>
+          <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
+          <button class="btn btn-primary" @click="save" :disabled="!form.name">{{ t('حفظ') }}</button>
         </div>
       </div>
     </div>
