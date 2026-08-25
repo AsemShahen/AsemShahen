@@ -14,7 +14,13 @@ const NAV_ITEMS = [
   { key: 'parties', label: 'العملاء والموردون', icon: '👥' },
   { key: 'closing', label: 'الإقفال السنوي', icon: '🔒' },
   { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
-  { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' }
+  { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' },
+  { key: 'hosp-dashboard', label: 'لوحة المشفى', icon: '🏥', hospitalOnly: true },
+  { key: 'hosp-patients', label: 'المرضى', icon: '🧑', hospitalOnly: true },
+  { key: 'hosp-doctors', label: 'الأطباء والأقسام', icon: '🩺', hospitalOnly: true },
+  { key: 'hosp-appointments', label: 'المواعيد', icon: '📅', hospitalOnly: true },
+  { key: 'hosp-records', label: 'السجلات الطبية', icon: '📋', hospitalOnly: true },
+  { key: 'hosp-billing', label: 'فوترة المرضى', icon: '🧾', hospitalOnly: true }
 ];
 
 const { createApp } = Vue;
@@ -54,7 +60,13 @@ const App = {
         'parties': PartiesView,
         'closing': ClosingView,
         'settings': SettingsView,
-        'users': UsersView
+        'users': UsersView,
+        'hosp-dashboard': HospitalDashboardView,
+        'hosp-patients': HospitalPatientsView,
+        'hosp-doctors': HospitalDoctorsView,
+        'hosp-appointments': HospitalAppointmentsView,
+        'hosp-records': HospitalRecordsView,
+        'hosp-billing': HospitalBillingView
       };
       return map[this.view] || DashboardView;
     },
@@ -68,7 +80,9 @@ const App = {
       return item ? t(item.label) : '';
     },
     navItems() {
+      const isHospital = this.activeCompany && this.activeCompany.business_type === 'hospital';
       return NAV_ITEMS.filter(i => {
+        if (i.hospitalOnly) return isHospital;
         if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
         return can(i.key, 'view');
       }).map(i => ({ ...i, label: t(i.label) }));

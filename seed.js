@@ -14,6 +14,7 @@ const { openCompanyDb } = require('./lib/company-db');
 const invoicesLib = require('./lib/invoices');
 const partiesLib = require('./lib/parties');
 const usersLib = require('./lib/users');
+const hospitalLib = require('./lib/hospital');
 
 // إنشاء حساب المدير الافتراضي: admin / admin123
 usersLib.ensureDefaultAdmin();
@@ -172,6 +173,76 @@ seedCompany({
   j('2026-03-31', 'رواتب طاقم المختبر', [L('5201', 45000), L('1111', 0, 45000)]);
   j('2026-04-01', 'إيجار المقر الطبي', [L('5202', 60000), L('1111', 0, 60000)]);
   j('2026-04-10', 'مصروف إهلاك الأجهزة الطبية', [L('5207', 18000), L('1599', 0, 18000)]);
+});
+
+// ============ مستشفى ============
+seedCompany({
+  name: 'مستشفى الحياة التخصصي', business_type: 'hospital',
+  cr_number: '4030123456', vat_number: '310999888777003', vat_rate: 15,
+  address: 'الرياض - حي النرجس', phone: '0115566778', email: 'care@alhayah-hospital.sa'
+}, (db, year, inv) => {
+  const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });
+  const L = (code, debit, credit, detail = '') => ({ account_id: acct(db, code).id, debit, credit, detail });
+
+  j(year.start_date, 'رأس المال النقدي', [L('1111', 3000000), L('3101', 0, 3000000)]);
+  j(year.start_date, 'شراء أجهزة ومعدات طبية', [L('1510', 1200000), L('1111', 0, 1200000)]);
+  j(year.start_date, 'شراء مخزون أدوية ومستلزمات', [L('1315', 250000), L('1111', 0, 250000)]);
+
+  const internal = hospitalLib.createDepartment(db, { name: 'الباطنية', description: 'قسم الأمراض الباطنية' });
+  const pediatric = hospitalLib.createDepartment(db, { name: 'الأطفال' });
+  const emergency = hospitalLib.createDepartment(db, { name: 'الطوارئ' });
+  const surgery = hospitalLib.createDepartment(db, { name: 'الجراحة العامة' });
+  const radiology = hospitalLib.createDepartment(db, { name: 'الأشعة والمختبر' });
+
+  const d1 = hospitalLib.createDoctor(db, { name: 'د. خالد العتيبي', specialty: 'أمراض قلب', department_id: internal.id, qualification: 'استشاري', phone: '0551112223', consultation_fee: 300 });
+  const d2 = hospitalLib.createDoctor(db, { name: 'د. سارة الشمري', specialty: 'طب أطفال', department_id: pediatric.id, qualification: 'أخصائي', phone: '0554445556', consultation_fee: 200 });
+  const d3 = hospitalLib.createDoctor(db, { name: 'د. محمد القحطاني', specialty: 'طوارئ', department_id: emergency.id, qualification: 'أخصائي', consultation_fee: 250 });
+  const d4 = hospitalLib.createDoctor(db, { name: 'د. نورة الدوسري', specialty: 'جراحة عامة', department_id: surgery.id, qualification: 'استشاري', consultation_fee: 500 });
+
+  const p1 = hospitalLib.createPatient(db, { name: 'عبدالله محمد السالم', national_id: '1023456789', gender: 'ذكر', birth_date: '1985-04-12', phone: '0550001112', blood_type: 'O+', insurance_company: 'شركة التأمين العربية' });
+  const p2 = hospitalLib.createPatient(db, { name: 'ريم فهد العنزي', national_id: '2098765432', gender: 'أنثى', birth_date: '1992-09-01', phone: '0553334445', blood_type: 'A+', insurance_company: 'التأمين الطبي المتحد' });
+  const p3 = hospitalLib.createPatient(db, { name: 'خالد سعد الغامدي', national_id: '1056781234', gender: 'ذكر', birth_date: '1978-01-25', phone: '0567778889', blood_type: 'B+', insurance_company: '' });
+
+  const svcConsult = hospitalLib.createService(db, { name: 'كشف طبيب باطنية', category: 'كشف واستشارات', price: 300, cost: 50, account_code: '4114', vat_applicable: true });
+  const svcLab = hospitalLib.createService(db, { name: 'تحليل دم شامل', category: 'مختبر وأشعة', price: 150, cost: 60, account_code: '4115', vat_applicable: true });
+  const svcXray = hospitalLib.createService(db, { name: 'أشعة سينية', category: 'مختبر وأشعة', price: 200, cost: 80, account_code: '4115', vat_applicable: true });
+  const svcSurgery = hospitalLib.createService(db, { name: 'عملية استئصال الزائدة', category: 'عمليات جراحية', price: 4500, cost: 1800, account_code: '4116', vat_applicable: true });
+  const svcRoom = hospitalLib.createService(db, { name: 'إقامة جناح خاص (ليلة)', category: 'تنويم وإقامة', price: 400, cost: 150, account_code: '4117', vat_applicable: true });
+  const svcMed = hospitalLib.createService(db, { name: 'أدوية الصيدلية', category: 'صيدلية', price: 120, cost: 70, account_code: '4118', vat_applicable: true });
+
+  hospitalLib.createAppointment(db, { patient_id: p1.id, doctor_id: d1.id, department_id: internal.id, date: '2026-06-01', time: '10:00', reason: 'ألم في الصدر', status: 'completed' });
+  hospitalLib.createAppointment(db, { patient_id: p2.id, doctor_id: d2.id, department_id: pediatric.id, date: '2026-06-03', time: '11:30', reason: 'متابعة طفل', status: 'completed' });
+  hospitalLib.createAppointment(db, { patient_id: p3.id, doctor_id: d3.id, department_id: emergency.id, date: '2026-06-05', time: '09:15', reason: 'إصابة طارئة', status: 'checked_in' });
+  hospitalLib.createAppointment(db, { patient_id: p1.id, doctor_id: d1.id, department_id: internal.id, date: '2026-07-10', time: '10:30', reason: 'متابعة دورية', status: 'scheduled' });
+
+  hospitalLib.createMedicalRecord(db, { patient_id: p1.id, doctor_id: d1.id, date: '2026-06-01', symptoms: 'ألم وضغط في الصدر', diagnosis: 'ارتفاع ضغط الدم', treatment: 'أدوية خافضة للضغط ومتابعة' });
+  hospitalLib.createMedicalRecord(db, { patient_id: p2.id, doctor_id: d2.id, date: '2026-06-03', symptoms: 'حمى وسعال', diagnosis: 'التهاب الجهاز التنفسي', treatment: 'مضاد حيوي وخافض حرارة' });
+  hospitalLib.createMedicalRecord(db, { patient_id: p3.id, doctor_id: d3.id, date: '2026-06-05', symptoms: 'جرح عميق في الساعد', diagnosis: 'جرح قطعي - تم خياطته', treatment: 'تطهير وخياطة وتطعيم ضد الكزاز' });
+
+  hospitalLib.createBill(db, {
+    patient_id: p1.id, date: '2026-06-01', fiscal_year_id: year.id, payer: 'patient', payment_method: 'mada',
+    lines: [{ service_id: svcConsult.id, qty: 1, unit_price: 300 }, { service_id: svcLab.id, qty: 1, unit_price: 150 }]
+  });
+  hospitalLib.createBill(db, {
+    patient_id: p2.id, date: '2026-06-03', fiscal_year_id: year.id, payer: 'patient', payment_method: 'credit', paid_amount: 0,
+    lines: [{ service_id: svcConsult.id, qty: 1, unit_price: 200 }, { service_id: svcMed.id, qty: 2, unit_price: 120 }]
+  });
+  hospitalLib.createBill(db, {
+    patient_id: p3.id, date: '2026-06-05', fiscal_year_id: year.id, payer: 'insurance', payment_method: 'credit', paid_amount: 0,
+    lines: [{ service_id: svcXray.id, qty: 1, unit_price: 200 }, { service_id: svcSurgery.id, qty: 1, unit_price: 4500 }]
+  });
+  hospitalLib.createBill(db, {
+    patient_id: p3.id, date: '2026-06-06', fiscal_year_id: year.id, payer: 'insurance', payment_method: 'credit', paid_amount: 0,
+    lines: [{ service_id: svcRoom.id, qty: 2, unit_price: 400 }]
+  });
+  hospitalLib.createBill(db, {
+    patient_id: p1.id, date: '2026-07-10', fiscal_year_id: year.id, payer: 'patient', payment_method: 'cash',
+    lines: [{ service_id: svcConsult.id, qty: 1, unit_price: 300 }, { service_id: svcMed.id, qty: 3, unit_price: 120 }]
+  });
+
+  j('2026-06-30', 'رواتب الأطباء والتمريض', [L('5220', 120000), L('1111', 0, 120000)]);
+  j('2026-06-30', 'شراء أدوية ومستلزمات طبية', [L('5217', 45000), L('1111', 0, 45000)]);
+  j('2026-07-01', 'إيجار مبنى المستشفى', [L('5202', 150000), L('1111', 0, 150000)]);
 });
 
 console.log('تم إنشاء البيانات التجريبية بنجاح.');

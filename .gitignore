@@ -13,3 +13,7 @@ auto-sync.ps1
 Thumbs.db
 .vscode/
 .idea/
+
+# SQLite WAL (transient)
+*.db-shm
+*.db-wal

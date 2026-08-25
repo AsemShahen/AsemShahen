@@ -9,6 +9,7 @@ const partiesLib = require('./lib/parties');
 const chartsLib = require('./lib/charts');
 const zatcaLib = require('./lib/zatca');
 const usersLib = require('./lib/users');
+const hospitalLib = require('./lib/hospital');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -124,14 +125,14 @@ app.get('/api/companies', (req, res) => {
 });
 
 app.get('/api/company-types', (req, res) => {
-  res.json(chartsLib.getChartForType('corporate').length ? {
-    types: Object.keys({
-      corporate: chartsLib.typeLabel('corporate'),
-      supermarket: chartsLib.typeLabel('supermarket'),
-      factory: chartsLib.typeLabel('factory'),
-      medical_lab: chartsLib.typeLabel('medical_lab')
-    }).map(t => ({ code: t, label: chartsLib.typeLabel(t) }))
-  } : {});
+  const types = Object.keys({
+    corporate: chartsLib.typeLabel('corporate'),
+    supermarket: chartsLib.typeLabel('supermarket'),
+    factory: chartsLib.typeLabel('factory'),
+    medical_lab: chartsLib.typeLabel('medical_lab'),
+    hospital: chartsLib.typeLabel('hospital')
+  }).map(t => ({ code: t, label: chartsLib.typeLabel(t) }));
+  res.json({ types });
 });
 
 app.post('/api/companies', adminOnly, (req, res) => {
@@ -589,6 +590,285 @@ app.post('/api/companies/:companyId/close-year', windowPerm('closing', 'edit'), 
     db.close();
     res.status(400).json({ error: e.message });
   }
+});
+
+// ==================== نظام المشافي ====================
+function getCompanyDb(req, res) {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) { res.status(404).json({ error: 'الشركة غير موجودة' }); return null; }
+  const db = accounting.getDb(company.id);
+  return { company, db };
+}
+
+// ---------- الأقسام ----------
+app.get('/api/companies/:companyId/hospital/departments', windowPerm('hosp-doctors', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listDepartments(ctx.db));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/departments', windowPerm('hosp-doctors', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createDepartment(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/departments/:depId', windowPerm('hosp-doctors', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const d = hospitalLib.updateDepartment(ctx.db, req.params.depId, req.body);
+  ctx.db.close();
+  if (!d) return res.status(404).json({ error: 'القسم غير موجود' });
+  res.json(d);
+});
+
+app.delete('/api/companies/:companyId/hospital/departments/:depId', windowPerm('hosp-doctors', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hospitalLib.deleteDepartment(ctx.db, req.params.depId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الأطباء ----------
+app.get('/api/companies/:companyId/hospital/doctors', windowPerm('hosp-doctors', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listDoctors(ctx.db, req.query.all === '1'));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/doctors', windowPerm('hosp-doctors', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createDoctor(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/doctors/:doctorId', windowPerm('hosp-doctors', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const d = hospitalLib.updateDoctor(ctx.db, req.params.doctorId, req.body);
+  ctx.db.close();
+  if (!d) return res.status(404).json({ error: 'الطبيب غير موجود' });
+  res.json(d);
+});
+
+app.delete('/api/companies/:companyId/hospital/doctors/:doctorId', windowPerm('hosp-doctors', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  hospitalLib.deleteDoctor(ctx.db, req.params.doctorId);
+  ctx.db.close();
+  res.json({ ok: true });
+});
+
+// ---------- المرضى ----------
+app.get('/api/companies/:companyId/hospital/patients', windowPerm('hosp-patients', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listPatients(ctx.db, req.query.search));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/patients', windowPerm('hosp-patients', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createPatient(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/patients/:patientId', windowPerm('hosp-patients', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const p = hospitalLib.updatePatient(ctx.db, req.params.patientId, req.body);
+  ctx.db.close();
+  if (!p) return res.status(404).json({ error: 'المريض غير موجود' });
+  res.json(p);
+});
+
+app.delete('/api/companies/:companyId/hospital/patients/:patientId', windowPerm('hosp-patients', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  hospitalLib.deletePatient(ctx.db, req.params.patientId);
+  ctx.db.close();
+  res.json({ ok: true });
+});
+
+// ---------- المواعيد ----------
+app.get('/api/companies/:companyId/hospital/appointments', windowPerm('hosp-appointments', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listAppointments(ctx.db, { status: req.query.status, patient_id: req.query.patient_id }));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/appointments', windowPerm('hosp-appointments', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createAppointment(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/appointments/:apptId', windowPerm('hosp-appointments', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const a = hospitalLib.updateAppointment(ctx.db, req.params.apptId, req.body);
+  ctx.db.close();
+  if (!a) return res.status(404).json({ error: 'الموعد غير موجود' });
+  res.json(a);
+});
+
+app.delete('/api/companies/:companyId/hospital/appointments/:apptId', windowPerm('hosp-appointments', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  hospitalLib.deleteAppointment(ctx.db, req.params.apptId);
+  ctx.db.close();
+  res.json({ ok: true });
+});
+
+// ---------- السجلات الطبية ----------
+app.get('/api/companies/:companyId/hospital/records', windowPerm('hosp-records', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listMedicalRecords(ctx.db, req.query.patient_id));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/records', windowPerm('hosp-records', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createMedicalRecord(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/records/:recordId', windowPerm('hosp-records', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const r = hospitalLib.updateMedicalRecord(ctx.db, req.params.recordId, req.body);
+  ctx.db.close();
+  if (!r) return res.status(404).json({ error: 'السجل غير موجود' });
+  res.json(r);
+});
+
+app.delete('/api/companies/:companyId/hospital/records/:recordId', windowPerm('hosp-records', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  hospitalLib.deleteMedicalRecord(ctx.db, req.params.recordId);
+  ctx.db.close();
+  res.json({ ok: true });
+});
+
+// ---------- الخدمات الطبية ----------
+app.get('/api/companies/:companyId/hospital/services', windowPerm('hosp-billing', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hospitalLib.listServices(ctx.db, req.query.all === '1'));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hospital/services', windowPerm('hosp-billing', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hospitalLib.createService(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hospital/services/:serviceId', windowPerm('hosp-billing', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const s = hospitalLib.updateService(ctx.db, req.params.serviceId, req.body);
+  ctx.db.close();
+  if (!s) return res.status(404).json({ error: 'الخدمة غير موجودة' });
+  res.json(s);
+});
+
+app.delete('/api/companies/:companyId/hospital/services/:serviceId', windowPerm('hosp-billing', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hospitalLib.deleteService(ctx.db, req.params.serviceId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- فواتير المرضى ----------
+app.get('/api/companies/:companyId/hospital/bills', windowPerm('hosp-billing', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+  if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+  res.json(hospitalLib.listBills(ctx.db, { fiscal_year_id: fy.id, status: req.query.status }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/hospital/bills/:billId', windowPerm('hosp-billing', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const b = hospitalLib.getBill(ctx.db, req.params.billId);
+  ctx.db.close();
+  if (!b) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  res.json(b);
+});
+
+app.post('/api/companies/:companyId/hospital/bills', windowPerm('hosp-billing', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    const bill = hospitalLib.createBill(ctx.db, { ...req.body, fiscal_year_id: fy.id });
+    ctx.db.close();
+    res.json(bill);
+  } catch (e) {
+    ctx.db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/companies/:companyId/hospital/bills/:billId/pay', windowPerm('hosp-billing', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    const bill = hospitalLib.recordBillPayment(ctx.db, { billId: req.params.billId, ...req.body, fiscal_year_id: fy.id });
+    ctx.db.close();
+    res.json(bill);
+  } catch (e) {
+    ctx.db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/companies/:companyId/hospital/bills/:billId', windowPerm('hosp-billing', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const ok = hospitalLib.deleteBill(ctx.db, req.params.billId);
+    if (!ok) { ctx.db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
+    ctx.db.close();
+    res.json({ ok: true });
+  } catch (e) {
+    ctx.db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---------- لوحة تحكم المشفى ----------
+app.get('/api/companies/:companyId/hospital/dashboard', windowPerm('hosp-dashboard', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+  if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+  res.json(hospitalLib.hospitalDashboard(ctx.db, fy.id));
+  ctx.db.close();
 });
 
 // ==================== لوحة التحكم ====================
