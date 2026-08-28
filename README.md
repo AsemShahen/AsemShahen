@@ -85,7 +85,6 @@ If you find my tools helpful, you can send a tip via Crypto:
 #### ✉️ Contact & Freelancing
 Looking for a developer for remote work, custom scripts, or automation tools? Let's connect!
 * **Email:** [asemshahen5@gmail.com](mailto:asemshahen5@gmail.com) - [asem6600@hotmail.com](mailto:asem6600@hotmail.com)
-* **Telegram / LinkedIn:** [Your_Link_Here]
 
 ---
 *Thank you for supporting independent developers worldwide! ✨*
