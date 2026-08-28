@@ -15,6 +15,7 @@ const invoicesLib = require('./lib/invoices');
 const partiesLib = require('./lib/parties');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
+const inventory = require('./lib/inventory');
 
 // إنشاء حساب المدير الافتراضي: admin / admin123
 usersLib.ensureDefaultAdmin();
@@ -84,21 +85,65 @@ seedCompany({
   const c1 = partiesLib.createParty(db, { type: 'customer', name: 'عميل نقدي' });
   const c2 = partiesLib.createParty(db, { type: 'customer', name: 'مؤسسة التموين الذهبية', tax_id: '300999888777003' });
 
-  inv({ kind: 'purchase', party_id: supplier.id, date: '2026-01-10', payment_method: 'credit', paid_amount: 80000, fiscal_year_id: year.id,
-    lines: [{ description: 'مواد غذائية متنوعة', qty: 1, unit_price: 120000 }] });
-  inv({ kind: 'purchase', party_id: supplier2.id, date: '2026-01-15', payment_method: 'bank_transfer', fiscal_year_id: year.id,
-    lines: [{ description: 'ألبان ومشتقات', qty: 1, unit_price: 40000 }] });
+  // ---------- مستودعات ومنتجات ----------
+  const whMain = inventory.listWarehouses(db).find(w => w.is_default);
+  const whCold = inventory.createWarehouse(db, { name: 'مستودع التبريد', location: 'الطابق الأرضي - غرفة التبريد' });
 
+  const P = (data) => inventory.createProduct(db, data);
+  const pWater = P({ name: 'مياه معدنية 1.5 لتر', barcode: '6258118000016', category: 'مشروبات', unit: 'كرتون', purchase_price: 8, sale_price: 12, min_stock: 20 });
+  const pJuice = P({ name: 'عصير برتقال 1 لتر', barcode: '6281010312621', category: 'مشروبات', unit: 'كرتون', purchase_price: 14, sale_price: 19, min_stock: 15 });
+  const pRice = P({ name: 'أرز بسمتي 5 كغ', barcode: '6281025500186', category: 'مواد غذائية', unit: 'كيس', purchase_price: 35, sale_price: 45, min_stock: 10 });
+  const pSugar = P({ name: 'سكر ناعم 1 كغ', barcode: '6281025500120', category: 'مواد غذائية', unit: 'كيس', purchase_price: 4, sale_price: 6, min_stock: 50 });
+  const pOil = P({ name: 'زيت نباتي 1.5 لتر', barcode: '6281025500263', category: 'مواد غذائية', unit: 'عبوة', purchase_price: 22, sale_price: 30, min_stock: 25 });
+  const pMilk = P({ name: 'حليب طويل الأجل 1 لتر', barcode: '6281007067204', category: 'ألبان', unit: 'كرتون', purchase_price: 7, sale_price: 10, min_stock: 40 });
+  const pCheese = P({ name: 'جبنة بيضاء 500 غ', barcode: '6281007067205', category: 'ألبان', unit: 'عبوة', purchase_price: 12, sale_price: 17, min_stock: 30 });
+  const pDet = P({ name: 'منظف أطباق 500 مل', barcode: '6285000051003', category: 'منزلية', unit: 'عبوة', purchase_price: 6, sale_price: 9, min_stock: 20 });
+
+  // ---------- مشتريات (تزيد المخزون وتثبت في حساب المخزون) ----------
+  inv({ kind: 'purchase', party_id: supplier.id, date: '2026-01-10', payment_method: 'bank_transfer', fiscal_year_id: year.id,
+    lines: [
+      { product_id: pWater.id, qty: 100 },
+      { product_id: pJuice.id, qty: 60 },
+      { product_id: pRice.id, qty: 40 },
+      { product_id: pSugar.id, qty: 200 },
+      { product_id: pOil.id, qty: 50 },
+      { product_id: pDet.id, qty: 30 }
+    ] });
+  inv({ kind: 'purchase', party_id: supplier2.id, date: '2026-01-15', payment_method: 'bank_transfer', fiscal_year_id: year.id,
+    lines: [
+      { product_id: pMilk.id, qty: 120 },
+      { product_id: pCheese.id, qty: 60 }
+    ] });
+
+  // رصيد ابتدائي في مستودع التبريد
+  inventory.applyStockMovement(db, { productId: pMilk.id, warehouseId: whCold.id, delta: 30, type: 'initial', date: '2026-01-15', notes: 'رصيد افتتاحي مستودع التبريد' });
+  inventory.applyStockMovement(db, { productId: pCheese.id, warehouseId: whCold.id, delta: 20, type: 'initial', date: '2026-01-15', notes: 'رصيد افتتاحي مستودع التبريد' });
+
+  // ---------- مبيعات ----------
   inv({ kind: 'sale', party_id: c1.id, date: '2026-02-03', payment_method: 'mada', fiscal_year_id: year.id,
-    lines: [{ description: 'بقالة متنوعة', qty: 60, unit_price: 500 }, { description: 'عصائر ومشروبات', qty: 40, unit_price: 350 }] });
-  inv({ kind: 'sale', party_id: c2.id, date: '2026-02-20', payment_method: 'credit', paid_amount: 20000, fiscal_year_id: year.id,
-    lines: [{ description: 'توريد بضاعة لحفلات', qty: 1, unit_price: 45000 }] });
+    lines: [{ product_id: pWater.id, qty: 20 }, { product_id: pJuice.id, qty: 15 }, { product_id: pSugar.id, qty: 40 }] });
+  inv({ kind: 'sale', party_id: c2.id, date: '2026-02-20', payment_method: 'credit', paid_amount: 1000, fiscal_year_id: year.id,
+    lines: [{ product_id: pRice.id, qty: 25 }, { product_id: pOil.id, qty: 30 }, { product_id: pMilk.id, qty: 40 }, { product_id: pCheese.id, qty: 20 }] });
   inv({ kind: 'sale', party_id: c1.id, date: '2026-03-05', payment_method: 'apple_pay', fiscal_year_id: year.id,
-    lines: [{ description: 'معلبات وحبوب', qty: 80, unit_price: 400 }] });
+    lines: [{ product_id: pWater.id, qty: 30 }, { product_id: pDet.id, qty: 10 }, { product_id: pSugar.id, qty: 60 }] });
   inv({ kind: 'sale', party_id: c1.id, date: '2026-03-18', payment_method: 'stc_pay', fiscal_year_id: year.id,
-    lines: [{ description: 'منظفات ومواد استهلاكية', qty: 50, unit_price: 300 }] });
+    lines: [{ product_id: pMilk.id, qty: 50 }, { product_id: pCheese.id, qty: 30 }, { product_id: pOil.id, qty: 15 }] });
   inv({ kind: 'sale', party_id: c1.id, date: '2026-04-02', payment_method: 'cash', fiscal_year_id: year.id,
-    lines: [{ description: 'خضار وفواكه', qty: 30, unit_price: 600 }] });
+    lines: [{ product_id: pJuice.id, qty: 20 }, { product_id: pRice.id, qty: 10 }, { product_id: pWater.id, qty: 25 }] });
+
+  // ---------- مبيعات نقطة البيع (نقدي) ----------
+  inv({ kind: 'sale', party_id: c1.id, date: '2026-04-10', payment_method: 'cash', fiscal_year_id: year.id,
+    lines: [{ product_id: pWater.id, qty: 5 }, { product_id: pMilk.id, qty: 10 }, { product_id: pSugar.id, qty: 20 }] });
+  inv({ kind: 'sale', party_id: c1.id, date: '2026-04-12', payment_method: 'mada', fiscal_year_id: year.id,
+    lines: [{ product_id: pCheese.id, qty: 5 }, { product_id: pOil.id, qty: 3 }, { product_id: pJuice.id, qty: 4 }] });
+
+  // ---------- جرد المخزون (نقص في المياه وزيادة في الجبنة) ----------
+  const count = inventory.createCount(db, { warehouse_id: whMain.id, date: '2026-05-31', fiscal_year_id: year.id });
+  for (const l of count.lines) {
+    if (l.name.includes('مياه')) inventory.updateCountLine(db, count.id, l.id, l.system_qty - 10);
+    if (l.name.includes('جبنة')) inventory.updateCountLine(db, count.id, l.id, l.system_qty + 5);
+  }
+  inventory.finalizeCount(db, count.id, year.id);
 
   j('2026-04-30', 'رواتب موظفي السوبر ماركت', [L('5201', 25000), L('1101', 0, 25000)]);
   j('2026-05-01', 'إيجار المقر التجاري', [L('5202', 30000), L('1101', 0, 30000)]);
@@ -123,10 +168,22 @@ seedCompany({
   const customer = partiesLib.createParty(db, { type: 'customer', name: 'التموين المركزية', tax_id: '300123456789003' });
   const customer2 = partiesLib.createParty(db, { type: 'customer', name: 'هايبر الشرق للتجزئة', tax_id: '300987654321003' });
 
+  // ---------- مخزون المواد الخام ----------
+  const whRaw = inventory.createWarehouse(db, { name: 'مستودع المواد الخام', location: 'المبنى رقم 2' });
+  const P = (data) => inventory.createProduct(db, data);
+  const pFlour = P({ name: 'دقيق قمح 50 كغ', barcode: '6286001010001', category: 'مواد خام', unit: 'كيس', purchase_price: 120, sale_price: 150, min_stock: 300 });
+  const pSugar = P({ name: 'سكر خام 50 كغ', barcode: '6286001010002', category: 'مواد خام', unit: 'كيس', purchase_price: 100, sale_price: 130, min_stock: 200 });
+  const pOil = P({ name: 'زيت نخيل 20 لتر', barcode: '6286001010003', category: 'مواد خام', unit: 'عبوة', purchase_price: 220, sale_price: 280, min_stock: 100 });
+  const pPack = P({ name: 'عبوات كرتونية', barcode: '6286001010004', category: 'تغليف', unit: 'كرتونة', purchase_price: 20, sale_price: 30, min_stock: 500 });
+
   inv({ kind: 'purchase', party_id: supplier.id, date: '2026-02-01', payment_method: 'bank_transfer', fiscal_year_id: year.id,
-    lines: [{ description: 'مواد أولية - دقيق وسكر وزيت', qty: 1, unit_price: 350000 }] });
+    lines: [
+      { product_id: pFlour.id, qty: 1000 },
+      { product_id: pSugar.id, qty: 800 },
+      { product_id: pOil.id, qty: 400 }
+    ] });
   inv({ kind: 'purchase', party_id: supplier2.id, date: '2026-02-10', payment_method: 'credit', paid_amount: 30000, fiscal_year_id: year.id,
-    lines: [{ description: 'عبوات ومواد تغليف', qty: 1, unit_price: 60000 }] });
+    lines: [{ product_id: pPack.id, qty: 3100 }] });
 
   // إنتاج وأجور
   j('2026-03-01', 'أجور عمال الإنتاج (شهر فبراير)', [L('5112', 90000), L('1111', 0, 90000)]);

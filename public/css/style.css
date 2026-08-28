@@ -346,3 +346,38 @@ html[dir="ltr"] .flex-between { text-align: left; }
 html[dir="ltr"] .statement-box { text-align: left; }
 html[dir="ltr"] .login-card h1,
 html[dir="ltr"] .brand-banner h1 { text-align: center; }
+
+/* ==================== نظام المخزون ونقطة البيع ==================== */
+.badge.blue { background: #e3edfb; color: #2b6cb0; }
+
+.cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.card-sm { background: #fff; border: 1px solid #e6ece9; border-radius: 12px; padding: 14px 16px; }
+.card-label { font-size: 12px; color: var(--text-muted); }
+.card-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+
+.barcode-add { display: flex; gap: 8px; align-items: center; }
+.barcode-add input { flex: 1; }
+
+.check-inline { display: flex; align-items: center; gap: 8px; padding-top: 24px; }
+
+.panel-footer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #eef3f0; }
+
+.pos-header { display: flex; gap: 8px; flex-wrap: wrap; }
+.pos-barcode { flex: 1; min-width: 220px; font-size: 15px; padding: 10px 12px; }
+.pos-wh, .pos-pm { min-width: 150px; }
+
+.pos-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 980px) { .pos-grid { grid-template-columns: 1fr; } }
+
+.pos-products { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-height: 56vh; overflow: auto; }
+.pos-product { border: 1px solid #e6ece9; border-radius: 10px; padding: 10px; cursor: pointer; background: #fff; transition: box-shadow .15s, transform .1s; }
+.pos-product:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); transform: translateY(-1px); }
+.pos-product-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.pos-product-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); gap: 4px; flex-wrap: wrap; }
+.pos-product-stock { color: var(--text-muted); }
+
+.pos-totals { padding: 12px 16px; border-top: 1px solid #eef3f0; }
+.pos-totals .flex-between { margin: 4px 0; }
+.pos-grand { font-size: 15px; margin-top: 4px; }
+
+.receipt-box { background: #fbfcfb; border: 1px dashed #ccc; border-radius: 10px; padding: 14px; margin: 10px 0; }

@@ -7,7 +7,8 @@ const InvoicesView = {
   props: { kind: { type: String, required: true } },
   data() {
     return {
-      invoices: [], parties: [], methods: [], loading: true, alert: null, filter: '',
+      invoices: [], parties: [], methods: [], products: [], warehouses: [],
+      loading: true, alert: null, filter: '', barcodeInput: '',
       showModal: false, saving: false, payModal: null, paying: false,
       detail: null, qrUrl: '', detailLoading: false,
       form: {}
@@ -31,14 +32,18 @@ const InvoicesView = {
   methods: {
     async load() {
       try {
-        const [invoices, parties, methods] = await Promise.all([
+        const [invoices, parties, methods, products, warehouses] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/invoices?kind=${this.kind}`),
           this.api(`/api/companies/${this.company.id}/parties?type=${this.partyType}`),
-          this.api(`/api/companies/${this.company.id}/payment-methods`)
+          this.api(`/api/companies/${this.company.id}/payment-methods`),
+          this.api(`/api/companies/${this.company.id}/products`),
+          this.api(`/api/companies/${this.company.id}/warehouses`)
         ]);
         this.invoices = invoices;
         this.parties = parties;
         this.methods = methods;
+        this.products = products;
+        this.warehouses = warehouses;
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
@@ -46,11 +51,36 @@ const InvoicesView = {
       this.form = {
         party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: Number(this.info.settings.vat_rate) || 15,
         payment_method: 'cash', paid_amount: null, discount: 0, notes: '',
+        warehouse_id: this.warehouses.length ? this.warehouses[0].id : '',
         lines: [this.emptyLine()]
       };
+      this.barcodeInput = '';
       this.showModal = true;
+      this.$nextTick(() => { const el = this.$refs.barcodeInput; if (el) el.focus(); });
     },
-    emptyLine() { return { description: '', qty: 1, unit_price: null, discount: 0 }; },
+    emptyLine() { return { product_id: '', description: '', qty: 1, unit_price: null, discount: 0 }; },
+    lineProduct(l) { return this.products.find(p => String(p.id) === String(l.product_id)); },
+    selectProduct(l) {
+      const p = this.lineProduct(l);
+      if (!p) return;
+      l.description = p.name;
+      l.unit_price = this.isSale ? Number(p.sale_price) : Number(p.purchase_price);
+    },
+    async addByBarcode() {
+      const code = this.barcodeInput.trim();
+      if (!code) return;
+      this.barcodeInput = '';
+      let product = this.products.find(p => p.barcode && p.barcode === code);
+      if (!product) {
+        try { product = await this.api(`/api/companies/${this.company.id}/products/barcode/${encodeURIComponent(code)}`); }
+        catch (e) { this.toast(t('لا يوجد منتج بهذا الباركود: {code}', { code }), 'error'); return; }
+      }
+      const line = this.emptyLine();
+      line.product_id = product.id;
+      line.description = product.name;
+      line.unit_price = this.isSale ? Number(product.sale_price) : Number(product.purchase_price);
+      this.form.lines.push(line);
+    },
     addLine() { this.form.lines.push(this.emptyLine()); },
     removeLine(i) { this.form.lines.splice(i, 1); },
     subTotal() { return this.form.lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0) - (Number(l.discount) || 0), 0); },
@@ -69,7 +99,7 @@ const InvoicesView = {
           payment_method: this.form.payment_method,
           paid_amount: this.form.paid_amount !== null ? Number(this.form.paid_amount) : undefined,
           notes: this.form.notes,
-          lines: this.form.lines.map(l => ({ description: l.description, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, discount: Number(l.discount) || 0 }))
+          lines: this.form.lines.map(l => ({ product_id: l.product_id ? Number(l.product_id) : undefined, warehouse_id: this.form.warehouse_id ? Number(this.form.warehouse_id) : undefined, description: l.description, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, discount: Number(l.discount) || 0 }))
         };
         await this.api(`/api/companies/${this.company.id}/invoices`, { method: 'POST', body });
         this.toast(t('تم إنشاء الفاتورة وتسجيل القيد المحاسبي تلقائياً'));
@@ -272,11 +302,28 @@ const InvoicesView = {
           <label class="span2">{{ t('ملاحظات') }} <input v-model.trim="form.notes"></label>
         </div>
 
+        <div v-if="warehouses.length" class="form-grid mt-2">
+          <label class="span2">{{ t('المستودع') }}
+            <select v-model="form.warehouse_id">
+              <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="barcode-add mt-2">
+          <input ref="barcodeInput" v-model.trim="barcodeInput" @keyup.enter="addByBarcode" :placeholder="t('امسح الباركود لإضافة صنف تلقائياً...')" dir="ltr" style="flex:1;">
+          <button class="btn btn-sm btn-primary" @click="addByBarcode">{{ t('إضافة بالباركود') }}</button>
+        </div>
+
         <div class="entry-lines mt-2">
-          <div class="line-row line-head" style="grid-template-columns:1.6fr 90px 120px 120px 110px 40px;">
-            <span>{{ t('الوصف') }}</span><span>{{ t('الكمية') }}</span><span>{{ t('سعر الوحدة') }}</span><span>{{ t('خصم السطر') }}</span><span>{{ t('الإجمالي') }}</span><span></span>
+          <div class="line-row line-head" style="grid-template-columns:1.3fr 1.1fr 80px 110px 100px 100px 36px;">
+            <span>{{ t('المنتج') }}</span><span>{{ t('الوصف') }}</span><span>{{ t('الكمية') }}</span><span>{{ t('سعر الوحدة') }}</span><span>{{ t('خصم السطر') }}</span><span>{{ t('الإجمالي') }}</span><span></span>
           </div>
-          <div class="line-row" style="grid-template-columns:1.6fr 90px 120px 120px 110px 40px;" v-for="(l, idx) in form.lines" :key="idx">
+          <div class="line-row" style="grid-template-columns:1.3fr 1.1fr 80px 110px 100px 100px 36px;" v-for="(l, idx) in form.lines" :key="idx">
+            <select v-model="l.product_id" @change="selectProduct(l)">
+              <option value="">{{ t('اختر...') }}</option>
+              <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}{{ p.barcode ? ' (' + p.barcode + ')' : '' }}</option>
+            </select>
             <input v-model.trim="l.description" :placeholder="t('وصف الصنف / الخدمة...')">
             <input type="number" v-model.number="l.qty" min="0">
             <input type="number" v-model.number="l.unit_price" min="0">

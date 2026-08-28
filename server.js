@@ -10,6 +10,7 @@ const chartsLib = require('./lib/charts');
 const zatcaLib = require('./lib/zatca');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
+const inventoryLib = require('./lib/inventory');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -599,6 +600,185 @@ function getCompanyDb(req, res) {
   const db = accounting.getDb(company.id);
   return { company, db };
 }
+
+// ==================== نظام المستودعات والمخزون ====================
+
+// ---------- المستودعات ----------
+app.get('/api/companies/:companyId/warehouses', windowPerm('warehouses', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listWarehouses(ctx.db));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/warehouses', windowPerm('warehouses', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(inventoryLib.createWarehouse(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/warehouses/:whId', windowPerm('warehouses', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const w = inventoryLib.updateWarehouse(ctx.db, req.params.whId, req.body);
+  ctx.db.close();
+  if (!w) return res.status(404).json({ error: 'المستودع غير موجود' });
+  res.json(w);
+});
+
+app.delete('/api/companies/:companyId/warehouses/:whId', windowPerm('warehouses', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { inventoryLib.deleteWarehouse(ctx.db, req.params.whId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- المنتجات ----------
+app.get('/api/companies/:companyId/products', windowPerm('products', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listProducts(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1' }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/products/barcode/:code', windowPerm('products', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const p = inventoryLib.findByBarcode(ctx.db, req.params.code);
+  ctx.db.close();
+  if (!p) return res.status(404).json({ error: 'لا يوجد منتج بهذا الباركود' });
+  res.json(p);
+});
+
+app.post('/api/companies/:companyId/products', windowPerm('products', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(inventoryLib.createProduct(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/products/:productId', windowPerm('products', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const p = inventoryLib.updateProduct(ctx.db, req.params.productId, req.body);
+    ctx.db.close();
+    if (!p) return res.status(404).json({ error: 'المنتج غير موجود' });
+    res.json(p);
+  } catch (e) {
+    ctx.db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/companies/:companyId/products/:productId', windowPerm('products', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { inventoryLib.deleteProduct(ctx.db, req.params.productId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الأرصدة والحركات ----------
+app.get('/api/companies/:companyId/stock', windowPerm('inventory', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.stockBalances(ctx.db, { warehouseId: req.query.warehouse_id, search: req.query.search }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/stock/summary', windowPerm('inventory', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.stockSummary(ctx.db));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/stock/movements', windowPerm('inventory', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listMovements(ctx.db, { productId: req.query.product_id, warehouseId: req.query.warehouse_id }));
+  ctx.db.close();
+});
+
+// ---------- الجرد ----------
+app.get('/api/companies/:companyId/counts', windowPerm('inventory', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+  if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+  res.json(inventoryLib.listCounts(ctx.db, { fiscal_year_id: fy.id }));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/counts', windowPerm('inventory', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    res.json(inventoryLib.createCount(ctx.db, { ...req.body, fiscal_year_id: fy.id }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/counts/:countId', windowPerm('inventory', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const c = inventoryLib.getCount(ctx.db, req.params.countId);
+  ctx.db.close();
+  if (!c) return res.status(404).json({ error: 'الجرد غير موجود' });
+  res.json(c);
+});
+
+app.put('/api/companies/:companyId/counts/:countId/lines/:lineId', windowPerm('inventory', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(inventoryLib.updateCountLine(ctx.db, req.params.countId, req.params.lineId, req.body.count_qty)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/counts/:countId/finalize', windowPerm('inventory', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    res.json(inventoryLib.finalizeCount(ctx.db, req.params.countId, fy.id));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/counts/:countId/cancel', windowPerm('inventory', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { inventoryLib.cancelCount(ctx.db, req.params.countId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- نقطة البيع ----------
+app.post('/api/companies/:companyId/pos/sell', windowPerm('pos', 'add'), async (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    let party = ctx.db.prepare(`SELECT id FROM parties WHERE type = 'customer' AND name = ? LIMIT 1`).get('عميل نقدي');
+    if (!party) party = partiesLib.createParty(ctx.db, { type: 'customer', name: 'عميل نقدي' });
+    const inv = await invoicesLib.createInvoice(ctx.db, { kind: 'sale', party_id: party.id, ...req.body, fiscal_year_id: fy.id, company: ctx.company });
+    ctx.db.close();
+    res.json(inv);
+  } catch (e) {
+    ctx.db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // ---------- الأقسام ----------
 app.get('/api/companies/:companyId/hospital/departments', windowPerm('hosp-doctors', 'view'), (req, res) => {

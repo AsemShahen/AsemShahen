@@ -15,6 +15,11 @@ const NAV_ITEMS = [
   { key: 'closing', label: 'الإقفال السنوي', icon: '🔒' },
   { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
   { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' },
+  { key: 'warehouses', label: 'المستودعات', icon: '📦' },
+  { key: 'products', label: 'المنتجات', icon: '🏷️' },
+  { key: 'stock', label: 'المخزون والأرصدة', icon: '📊', perm: 'inventory' },
+  { key: 'stock-counts', label: 'الجرد', icon: '🗒️', perm: 'inventory' },
+  { key: 'pos', label: 'نقطة البيع', icon: '🛒' },
   { key: 'hosp-dashboard', label: 'لوحة المشفى', icon: '🏥', hospitalOnly: true },
   { key: 'hosp-patients', label: 'المرضى', icon: '🧑', hospitalOnly: true },
   { key: 'hosp-doctors', label: 'الأطباء والأقسام', icon: '🩺', hospitalOnly: true },
@@ -61,6 +66,11 @@ const App = {
         'closing': ClosingView,
         'settings': SettingsView,
         'users': UsersView,
+        'warehouses': WarehousesView,
+        'products': ProductsView,
+        'stock': StockView,
+        'stock-counts': StockCountsView,
+        'pos': PosView,
         'hosp-dashboard': HospitalDashboardView,
         'hosp-patients': HospitalPatientsView,
         'hosp-doctors': HospitalDoctorsView,
@@ -84,7 +94,7 @@ const App = {
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
         if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
-        return can(i.key, 'view');
+        return can(i.perm || i.key, 'view');
       }).map(i => ({ ...i, label: t(i.label) }));
     },
     printStore() { return printStore; }
