@@ -61,3 +61,31 @@ node server.js
 ## نظرة عامة على الواجهة
 
 جميع الشاشات بالعربية: لوحة التحكم، الحسابات، دفتر اليومية، دفتر الأستاذ، ميزان المراجعة، قائمة الدخل، الميزانية العمومية، تقرير ضريبة القيمة المضافة، فواتير البيع والشراء، العملاء والموردون، إقفال السنة، الإعدادات.
+
+# Hi there, I'm Asem Shahen 👋
+
+An active Software Developer passionate about building useful open-source tools, automation scripts, and solving problems using **C#** and **Python**.
+
+---
+
+### 🛠️ My Tech Stack & Skills
+- **Languages:** C#, Python, SQL
+- **Specialties:** Automation, Scripting, Desktop Applications, Easy Setup Tools
+
+---
+
+### 🌟 Support My Open-Source Work
+
+Since official GitHub Sponsors is restricted in my region, you can back my projects and support my journey through these alternative methods:
+
+#### 🪙 Crypto Support (USDT / Crypto Wallets)
+If you find my tools helpful, you can send a tip via Crypto:
+* **USDT (Network: TRON): TU68gmFAkWzMuqfPeEw3GWWurPa8CcWjG9
+* **Bitcoin : bc1qg2wkx9t6yakskwplds9n8n24mca5ulnaeslznr
+#### ✉️ Contact & Freelancing
+Looking for a developer for remote work, custom scripts, or automation tools? Let's connect!
+* **Email:** [asemshahen5@gmail.com](mailto:asemshahen5@gmail.com) - [asem6600@hotmail.com](mailto:asem6600@hotmail.com)
+* **Telegram / LinkedIn:** [Your_Link_Here]
+
+---
+*Thank you for supporting independent developers worldwide! ✨*
