@@ -126,6 +126,7 @@ const App = {
         const savedId = localStorage.getItem('muhasib_company');
         if (savedId && this.companies.some(c => String(c.id) === savedId)) {
           this.activeCompany = this.companies.find(c => String(c.id) === savedId);
+          setActiveCompanyId(this.activeCompany.id);
           this.view = 'dashboard';
           await this.loadInfo();
         }
@@ -142,6 +143,7 @@ const App = {
       localStorage.removeItem('muhasib_token');
       localStorage.removeItem('muhasib_company');
       setAuthUser(null);
+      setActiveCompanyId(null);
       this.authUser = null;
       this.activeCompany = null;
       this.view = 'dashboard';
@@ -156,6 +158,7 @@ const App = {
     goDashboard() { this.view = 'dashboard'; },
     backToCompanies() {
       this.activeCompany = null;
+      setActiveCompanyId(null);
       this.view = 'dashboard';
       localStorage.removeItem('muhasib_company');
       this.loadCompanies();
@@ -163,6 +166,7 @@ const App = {
     async selectCompany(c) {
       this.activeCompany = c;
       localStorage.setItem('muhasib_company', String(c.id));
+      setActiveCompanyId(c.id);
       this.view = 'dashboard';
       await this.loadInfo();
     },
@@ -226,6 +230,7 @@ const App = {
     const savedId = localStorage.getItem('muhasib_company');
     if (savedId && this.companies.some(c => String(c.id) === savedId)) {
       this.activeCompany = this.companies.find(c => String(c.id) === savedId);
+      setActiveCompanyId(this.activeCompany.id);
       this.view = 'dashboard';
       await this.loadInfo();
     }

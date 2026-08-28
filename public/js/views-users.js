@@ -6,19 +6,23 @@ const UsersView = {
   mixins: [CommonMixin],
   data() {
     return {
-      users: [], windows: [], actions: [], loading: true, alert: null,
-      showModal: false, editing: null, saving: false, deleting: null
+      users: [], windows: [], actions: [], companies: [],
+      loading: true, alert: null,
+      showModal: false, editing: null, saving: false, deleting: null,
+      permCompany: '', form: {}
     };
   },
   async created() {
     try {
-      const [users, model] = await Promise.all([
+      const [users, model, companies] = await Promise.all([
         this.api(`/api/users`),
-        this.api(`/api/permission-model`)
+        this.api(`/api/permission-model`),
+        this.api(`/api/companies`)
       ]);
       this.users = users;
       this.windows = model.windows || [];
       this.actions = model.actions || [];
+      this.companies = companies.companies || [];
     } catch (e) { this.toast(e.message, 'error'); }
     finally { this.loading = false; }
   },
@@ -29,31 +33,45 @@ const UsersView = {
     }
   },
   methods: {
-    emptyPermissions() {
-      const p = {};
+    emptyMatrix() {
+      const m = {};
       for (const w of this.windows) {
-        p[w.key] = {};
-        for (const a of this.actions) p[w.key][a.key] = true;
+        m[w.key] = {};
+        for (const a of this.actions) m[w.key][a.key] = false;
       }
-      return p;
+      return m;
+    },
+    matrixFrom(u, cid) {
+      const p = (u && u.permissions) || {};
+      const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
+      const src = scoped ? (p[String(cid)] || {}) : p;
+      const m = {};
+      for (const w of this.windows) {
+        m[w.key] = {};
+        for (const a of this.actions) m[w.key][a.key] = !!(src[w.key] && src[w.key][a.key]);
+      }
+      return m;
+    },
+    ensureMatrix(cid) {
+      if (cid && !this.form.permissions[cid]) this.form.permissions[cid] = this.emptyMatrix();
     },
     openCreate() {
       this.editing = null;
-      this.form = { username: '', password: '', role: 'user', is_active: true, permissions: this.emptyPermissions() };
+      this.permCompany = this.companies.length ? String(this.companies[0].id) : '';
+      this.form = { username: '', password: '', role: 'user', is_active: true, permissions: {} };
+      this.ensureMatrix(this.permCompany);
       this.showModal = true;
     },
     openEdit(u) {
       this.editing = u;
-      const perms = {};
-      for (const w of this.windows) {
-        perms[w.key] = {};
-        for (const a of this.actions) {
-          perms[w.key][a.key] = !!(u.permissions && u.permissions[w.key] && u.permissions[w.key][a.key]);
-        }
-      }
+      const scoped = Object.keys((u.permissions || {})).some(k => /^\d+$/.test(k));
+      const firstWith = scoped ? this.companies.find(c => u.permissions[String(c.id)] && Object.keys(u.permissions[String(c.id)]).some(w => Object.keys(u.permissions[String(c.id)][w] || {}).some(a => u.permissions[String(c.id)][w][a]))) : null;
+      this.permCompany = firstWith ? String(firstWith.id) : (this.companies.length ? String(this.companies[0].id) : '');
       this.form = {
-        username: u.username, password: '', role: u.role, is_active: !!u.is_active, permissions: perms
+        username: u.username, password: '', role: u.role, is_active: !!u.is_active, permissions: {}
       };
+      for (const c of this.companies) this.form.permissions[String(c.id)] = this.matrixFrom(u, c.id);
+      this.ensureMatrix(this.permCompany);
       this.showModal = true;
     },
     async save() {
@@ -92,15 +110,38 @@ const UsersView = {
       } catch (e) { this.toast(e.message, 'error'); }
     },
     setAll(v) {
-      for (const w of this.windows) {
-        for (const a of this.actions) this.form.permissions[w.key][a.key] = v;
+      const m = this.form.permissions[this.permCompany];
+      if (!m) return;
+      for (const w of this.windows) for (const a of this.actions) m[w.key][a.key] = v;
+    },
+    copyToAll() {
+      if (!this.permCompany) return;
+      const src = this.form.permissions[this.permCompany];
+      if (!src) return;
+      for (const c of this.companies) {
+        const m = this.emptyMatrix();
+        for (const w of this.windows) for (const a of this.actions) m[w.key][a.key] = !!(src[w.key] && src[w.key][a.key]);
+        this.form.permissions[String(c.id)] = m;
       }
+      this.toast(t('تم نسخ الصلاحيات إلى كل الشركات'));
     },
     grantedCount(u) {
       if (u.role === 'admin') return t('الكل');
+      const p = u.permissions || {};
+      const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
       let n = 0;
-      for (const w of this.windows) for (const a of this.actions) if (u.permissions && u.permissions[w.key] && u.permissions[w.key][a.key]) n++;
-      return n + ' / ' + (this.windows.length * this.actions.length);
+      if (scoped) {
+        for (const cid of Object.keys(p)) for (const w of Object.keys(p[cid] || {})) for (const a of Object.keys(p[cid][w] || {})) if (p[cid][w][a]) n++;
+      } else {
+        for (const w of this.windows) for (const a of this.actions) if (p[w] && p[w][a]) n++;
+      }
+      return n;
+    },
+    grantedCompanies(u) {
+      if (u.role === 'admin') return t('الكل');
+      const p = u.permissions || {};
+      if (!Object.keys(p).some(k => /^\d+$/.test(k))) return t('الكل');
+      return Object.keys(p).filter(cid => Object.keys(p[cid] || {}).some(w => Object.keys(p[cid][w] || {}).some(a => p[cid][w][a]))).length;
     }
   },
   template: `
@@ -118,7 +159,7 @@ const UsersView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
+              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('الشركات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
@@ -128,13 +169,14 @@ const UsersView = {
                 <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? t('مدير') : t('مستخدم') }}</span></td>
                 <td><span class="badge" :class="u.is_active ? 'green' : 'red'">{{ u.is_active ? t('نشط') : t('موقوف') }}</span></td>
                 <td>{{ grantedCount(u) }}</td>
+                <td>{{ grantedCompanies(u) }}</td>
                 <td class="monospace">{{ u.created_at ? u.created_at.slice(0, 10) : '—' }}</td>
                 <td>
                   <button class="btn btn-sm btn-ghost" @click="openEdit(u)">{{ t('تعديل') }}</button>
                   <button class="btn btn-sm btn-danger" @click="confirmDelete(u)" v-if="u.id !== currentUserId">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!users.length"><td colspan="6" class="muted">{{ t('لا يوجد مستخدمون') }}</td></tr>
+              <tr v-if="!users.length"><td colspan="7" class="muted">{{ t('لا يوجد مستخدمون') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -142,7 +184,7 @@ const UsersView = {
     </div>
 
     <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
-      <div class="modal" style="max-width:900px;">
+      <div class="modal" style="max-width:940px;">
         <h3>{{ editing ? t('تعديل مستخدم') : t('إضافة مستخدم جديد') }}</h3>
         <div class="form-grid">
           <label>{{ t('اسم المستخدم') }}
@@ -163,30 +205,40 @@ const UsersView = {
         </div>
 
         <div class="mt-3">
-          <div class="flex-between flex-wrap" style="margin-bottom:8px;">
-            <strong>{{ t('الصلاحيات حسب النافذة') }}</strong>
-            <div class="flex" v-if="form.role === 'user'">
-              <button class="btn btn-sm btn-ghost" @click="setAll(true)">{{ t('تحديد الكل') }}</button>
-              <button class="btn btn-sm btn-ghost" @click="setAll(false)">{{ t('مسح الكل') }}</button>
-            </div>
-          </div>
-
           <div class="alert info" v-if="form.role === 'admin'">
-            {{ t('مستخدم بصلاحية مدير يملك تلقائياً جميع الصلاحيات في جميع النوافذ، ولا حاجة لتحديد صلاحيات فردية.') }}
+            {{ t('مستخدم بصلاحية مدير يملك تلقائياً جميع الصلاحيات في جميع الشركات والنوافذ، ولا حاجة لتحديد صلاحيات فردية.') }}
           </div>
 
-          <div class="perm-matrix" v-else>
-            <div class="perm-row perm-head">
-              <span class="perm-window">{{ t('النافذة') }}</span>
-              <span v-for="a in actions" :key="a.key" class="perm-cell">{{ t(a.label) }}</span>
+          <template v-else>
+            <div class="flex-between flex-wrap" style="margin-bottom:8px;">
+              <label class="perm-company">
+                {{ t('الشركة:') }}
+                <select v-model="permCompany" style="min-width:260px;">
+                  <option v-for="c in companies" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                </select>
+              </label>
+              <div class="flex">
+                <button class="btn btn-sm btn-ghost" @click="setAll(true)">{{ t('تحديد الكل') }}</button>
+                <button class="btn btn-sm btn-ghost" @click="setAll(false)">{{ t('مسح الكل') }}</button>
+                <button class="btn btn-sm btn-ghost" @click="copyToAll" :disabled="!permCompany">{{ t('نسخ إلى كل الشركات') }}</button>
+              </div>
             </div>
-            <div class="perm-row" v-for="w in windows" :key="w.key">
-              <span class="perm-window">{{ t(w.label) }}</span>
-              <span v-for="a in actions" :key="a.key" class="perm-cell">
-                <input type="checkbox" v-model="form.permissions[w.key][a.key]">
-              </span>
+
+            <p class="muted mb-2" v-if="!companies.length">{{ t('لا توجد شركات بعد.') }}</p>
+
+            <div class="perm-matrix" v-if="permCompany && form.permissions[permCompany]">
+              <div class="perm-row perm-head">
+                <span class="perm-window">{{ t('النافذة') }}</span>
+                <span v-for="a in actions" :key="a.key" class="perm-cell">{{ t(a.label) }}</span>
+              </div>
+              <div class="perm-row" v-for="w in windows" :key="w.key">
+                <span class="perm-window">{{ t(w.label) }}</span>
+                <span v-for="a in actions" :key="a.key" class="perm-cell">
+                  <input type="checkbox" v-model="form.permissions[permCompany][w.key][a.key]">
+                </span>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <div class="modal-actions">

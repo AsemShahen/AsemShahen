@@ -38,7 +38,8 @@ app.use('/api', (req, res, next) => {
 // ---------- أدوات التحقق من الصلاحيات ----------
 function windowPerm(windowKey, action = 'view') {
   return (req, res, next) => {
-    if (usersLib.hasPerm(req.user, windowKey, action)) return next();
+    const companyId = Number(req.params.companyId);
+    if (usersLib.hasPerm(req.user, companyId, windowKey, action)) return next();
     return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' });
   };
 }
@@ -122,7 +123,11 @@ app.get('/api/companies', (req, res) => {
     db.close();
     return { ...c, current_fiscal_year: fy, counts };
   });
-  res.json({ companies });
+  // المستخدم العادي يرى فقط الشركات التي لديه صلاحيات فيها
+  const visible = req.user.role === 'admin'
+    ? companies
+    : companies.filter(c => usersLib.userHasCompany(req.user, c.id));
+  res.json({ companies: visible });
 });
 
 app.get('/api/company-types', (req, res) => {
@@ -174,6 +179,9 @@ app.get('/api/companies/:companyId', adminOnly, (req, res) => {
 app.get('/api/companies/:companyId/info', (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  if (!usersLib.userHasCompany(req.user, company.id)) {
+    return res.status(403).json({ error: 'ليست لديك صلاحية لهذه الشركة' });
+  }
   const db = accounting.getDb(company.id);
   const settings = Object.fromEntries(db.prepare('SELECT key, value FROM settings').all().map(r => [r.key, r.value]));
   const years = db.prepare('SELECT * FROM fiscal_years ORDER BY id').all();
@@ -439,7 +447,7 @@ app.get('/api/companies/:companyId/invoices/:invoiceId', (req, res) => {
   const db = accounting.getDb(company.id);
   const inv = invoicesLib.getInvoice(db, req.params.invoiceId);
   if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
-  if (!usersLib.hasPerm(req.user, invoiceWindow(inv.kind), 'view')) { db.close(); return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' }); }
+  if (!usersLib.hasPerm(req.user, company.id, invoiceWindow(inv.kind), 'view')) { db.close(); return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' }); }
   db.close();
   res.json(inv);
 });
@@ -451,7 +459,7 @@ app.post('/api/companies/:companyId/invoices/:invoiceId/pay', (req, res) => {
   try {
     const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.invoiceId);
     if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
-    if (!usersLib.hasPerm(req.user, invoiceWindow(inv.kind), 'edit')) { db.close(); return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' }); }
+    if (!usersLib.hasPerm(req.user, company.id, invoiceWindow(inv.kind), 'edit')) { db.close(); return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' }); }
     const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
     if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
     const result = invoicesLib.recordPayment(db, { invoiceId: req.params.invoiceId, ...req.body, fiscal_year_id: fy.id });

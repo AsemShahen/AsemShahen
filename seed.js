@@ -303,3 +303,31 @@ seedCompany({
 });
 
 console.log('تم إنشاء البيانات التجريبية بنجاح.');
+
+// ============ مستخدم تجريبي بصلاحيات مقيدة بشركة سوبر ماركت (رقم 2) ============
+// كلمة المرور: cashier123 — صلاحياته محصورة في الشركة رقم 2 فقط
+{
+  const win = (view, extra) => {
+    const acts = { view: true, add: true, edit: true, search: true };
+    return { ...acts, ...(extra || {}) };
+  };
+  const company2Perms = {
+    '2': {
+      'dashboard': win('dashboard'),
+      'invoices-sale': win('invoices-sale', { print: true, print_preview: true }),
+      'invoices-purchase': win('invoices-purchase'),
+      'pos': win('pos', { print: true, print_preview: true }),
+      'parties': win('parties'),
+      'products': win('products'),
+      'warehouses': win('warehouses'),
+      'inventory': win('inventory'),
+      'vat': { view: true, search: true }
+    }
+  };
+  try {
+    usersLib.createUser({ username: 'cashier', password: 'cashier123', role: 'user', is_active: true, permissions: company2Perms });
+    console.log('✓ مستخدم تجريبي cashier / cashier123 (صلاحياته على سوبر ماركت الخير فقط)');
+  } catch (e) {
+    console.log(`• المستخدم التجريبي cashier: ${e.message}`);
+  }
+}

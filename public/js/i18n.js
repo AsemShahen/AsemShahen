@@ -466,6 +466,13 @@ const EN_DICT = {
   'تأكيد حذف المستخدم': 'Confirm User Deletion',
   'هل أنت متأكد من حذف المستخدم {name}؟ سيتم إنهاء جميع جلساته.': 'Are you sure you want to delete user {name}? All of their sessions will be terminated.',
   'نعم، حذف': 'Yes, Delete',
+  'تم تحديث المستخدم والصلاحيات': 'User and permissions updated',
+  'الشركات': 'Companies',
+  'الشركة:': 'Company:',
+  'نسخ إلى كل الشركات': 'Copy to All Companies',
+  'تم نسخ الصلاحيات إلى كل الشركات': 'Permissions copied to all companies',
+  'لا توجد شركات بعد.': 'No companies yet.',
+  'مستخدم بصلاحية مدير يملك تلقائياً جميع الصلاحيات في جميع الشركات والنوافذ، ولا حاجة لتحديد صلاحيات فردية.': 'An Admin user automatically has all permissions in all companies and windows; no need to set individual permissions.',
 
   // ===== نظام المشافي =====
   'لوحة المشفى': 'Hospital Dashboard',

@@ -83,14 +83,24 @@ const accountCategoryLabels = {
 
 // ==================== المستخدم الحالي والصلاحيات ====================
 let _authUser = null;
+let _activeCompanyId = null;
 function setAuthUser(u) { _authUser = u; }
 function getAuthUser() { return _authUser; }
+function setActiveCompanyId(id) { _activeCompanyId = id; }
 
-function can(windowKey, action) {
+function can(windowKey, action, companyId) {
   const u = getAuthUser();
   if (!u) return false;
   if (u.role === 'admin') return true;
-  return !!(u.permissions && u.permissions[windowKey] && u.permissions[windowKey][action]);
+  const p = u.permissions || {};
+  const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
+  const cid = companyId !== undefined ? companyId : _activeCompanyId;
+  if (scoped) {
+    const cp = p[String(cid)];
+    return !!(cp && cp[windowKey] && cp[windowKey][action]);
+  }
+  // صلاحيات قديمة (غير مقيدة بشركة) تنطبق على كل الشركات
+  return !!(p[windowKey] && p[windowKey][action]);
 }
 
 // ==================== طلب واجهة برمجية مع المصادقة ====================
