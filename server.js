@@ -11,6 +11,7 @@ const zatcaLib = require('./lib/zatca');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
+const hrLib = require('./lib/hr');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -786,6 +787,251 @@ app.post('/api/companies/:companyId/pos/sell', windowPerm('pos', 'add'), async (
     ctx.db.close();
     res.status(400).json({ error: e.message });
   }
+});
+
+// ==================== نظام الموارد البشرية ====================
+
+// ---------- الأقسام ----------
+app.get('/api/companies/:companyId/hr/departments', windowPerm('hr-employees', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.listDepartments(ctx.db));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hr/departments', windowPerm('hr-employees', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.createDepartment(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/departments/:depId', windowPerm('hr-employees', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const d = hrLib.updateDepartment(ctx.db, req.params.depId, req.body);
+  ctx.db.close();
+  if (!d) return res.status(404).json({ error: 'القسم غير موجود' });
+  res.json(d);
+});
+
+app.delete('/api/companies/:companyId/hr/departments/:depId', windowPerm('hr-employees', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hrLib.deleteDepartment(ctx.db, req.params.depId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الموظفون ----------
+app.get('/api/companies/:companyId/hr/employees', windowPerm('hr-employees', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.listEmployees(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1' }));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hr/employees', windowPerm('hr-employees', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.createEmployee(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/employees/:empId', windowPerm('hr-employees', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const e = hrLib.updateEmployee(ctx.db, req.params.empId, req.body);
+  ctx.db.close();
+  if (!e) return res.status(404).json({ error: 'الموظف غير موجود' });
+  res.json(e);
+});
+
+app.delete('/api/companies/:companyId/hr/employees/:empId', windowPerm('hr-employees', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hrLib.deleteEmployee(ctx.db, req.params.empId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الحضور والانصراف ----------
+app.get('/api/companies/:companyId/hr/attendance', windowPerm('hr-employees', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.listAttendance(ctx.db, req.query.month || new Date().toISOString().slice(0, 7)));
+  ctx.db.close();
+});
+
+app.put('/api/companies/:companyId/hr/attendance', windowPerm('hr-employees', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.upsertAttendance(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hr/attendance', windowPerm('hr-employees', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  hrLib.deleteAttendance(ctx.db, req.query.employee_id, req.query.month);
+  ctx.db.close();
+  res.json({ ok: true });
+});
+
+// ---------- أنواع الإجازات ----------
+app.get('/api/companies/:companyId/hr/leave-types', windowPerm('hr-leaves', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.listLeaveTypes(ctx.db));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hr/leave-types', windowPerm('hr-leaves', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.createLeaveType(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/leave-types/:typeId', windowPerm('hr-leaves', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const t = hrLib.updateLeaveType(ctx.db, req.params.typeId, req.body);
+  ctx.db.close();
+  if (!t) return res.status(404).json({ error: 'نوع الإجازة غير موجود' });
+  res.json(t);
+});
+
+app.delete('/api/companies/:companyId/hr/leave-types/:typeId', windowPerm('hr-leaves', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hrLib.deleteLeaveType(ctx.db, req.params.typeId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الإجازات ----------
+app.get('/api/companies/:companyId/hr/leaves', windowPerm('hr-leaves', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.listLeaves(ctx.db, { status: req.query.status, search: req.query.search }));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hr/leaves', windowPerm('hr-leaves', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.createLeave(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/leaves/:leaveId', windowPerm('hr-leaves', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.updateLeave(ctx.db, req.params.leaveId, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/leaves/:leaveId/status', windowPerm('hr-leaves', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const l = hrLib.setLeaveStatus(ctx.db, req.params.leaveId, req.body.status);
+    if (!l) return res.status(404).json({ error: 'الإجازة غير موجودة' });
+    res.json(l);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hr/leaves/:leaveId', windowPerm('hr-leaves', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hrLib.deleteLeave(ctx.db, req.params.leaveId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الرواتب والأجور ----------
+app.get('/api/companies/:companyId/hr/payroll', windowPerm('hr-payroll', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const month = req.query.month || new Date().toISOString().slice(0, 7);
+  res.json({ rows: hrLib.listPayroll(ctx.db, month), totals: hrLib.payrollTotals(ctx.db, month), month });
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hr/payroll/generate', windowPerm('hr-payroll', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const month = req.body.month || new Date().toISOString().slice(0, 7);
+    const rows = hrLib.generatePayroll(ctx.db, month);
+    res.json({ rows, totals: hrLib.payrollTotals(ctx.db, month), month });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hr/payroll/:rowId', windowPerm('hr-payroll', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hrLib.updatePayrollRow(ctx.db, req.params.rowId, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hr/payroll/:rowId', windowPerm('hr-payroll', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hrLib.deletePayrollRow(ctx.db, req.params.rowId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hr/payroll/post', windowPerm('hr-payroll', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const month = req.body.month || new Date().toISOString().slice(0, 7);
+    const result = hrLib.postPayroll(ctx.db, month);
+    res.json({ ...result, month });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hr/payroll/reverse', windowPerm('hr-payroll', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const month = req.body.month || new Date().toISOString().slice(0, 7);
+    const totals = hrLib.reversePayroll(ctx.db, month);
+    res.json({ totals, rows: hrLib.listPayroll(ctx.db, month), month });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/hr/payroll/accounts', windowPerm('hr-payroll', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hrLib.payrollAccounts(ctx.db));
+  ctx.db.close();
+});
+
+app.put('/api/companies/:companyId/hr/payroll/accounts', windowPerm('hr-payroll', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const set = ctx.db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+  set.run('hr_salary_account', req.body.salary || '5201');
+  set.run('hr_payable_account', req.body.payable || '2104');
+  const accounts = hrLib.payrollAccounts(ctx.db);
+  ctx.db.close();
+  res.json(accounts);
 });
 
 // ---------- الأقسام ----------

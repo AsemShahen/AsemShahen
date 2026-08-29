@@ -89,8 +89,13 @@ html, body {
 .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #b73a3a; }
+.btn-success { background: #2e9e6b; color: #fff; }
+.btn-success:hover:not(:disabled) { background: #26875a; }
 .btn-lg { padding: 12px 30px; font-size: 16px; }
 .btn-sm { padding: 6px 12px; font-size: 12.5px; border-radius: 7px; }
+
+.dim { opacity: .55; }
+tr.tfoot td { border-top: 2px solid var(--border); font-weight: 700; background: #f7faf8; }
 
 /* ==================== التطبيق ==================== */
 .app-shell { display: flex; min-height: 100vh; }

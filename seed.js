@@ -16,9 +16,77 @@ const partiesLib = require('./lib/parties');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventory = require('./lib/inventory');
+const hrLib = require('./lib/hr');
 
 // إنشاء حساب المدير الافتراضي: admin / admin123
 usersLib.ensureDefaultAdmin();
+
+// بيانات الموارد البشرية التجريبية لكل نوع نشاط
+function seedHR(db, year, kind) {
+  const depNames = {
+    corporate: ['الإدارة', 'المحاسبة والمالية', 'الاستشارات', 'تقنية المعلومات'],
+    supermarket: ['الإدارة', 'المحاسبة', 'المبيعات', 'المخازن'],
+    factory: ['الإدارة', 'الإنتاج', 'الجودة', 'المخازن', 'الصيانة'],
+    medical_lab: ['الإدارة', 'المختبر', 'العينات والاستقبال', 'ضبط الجودة'],
+    hospital: ['الإدارة', 'التمريض', 'الصيدلية', 'الخدمات الطبية', 'الخدمات العامة']
+  }[kind] || ['الإدارة', 'المبيعات'];
+  const deptIds = depNames.map(name => hrLib.createDepartment(db, { name }));
+
+  const roster = {
+    corporate: [
+      { n: 'محمد السالم', t: 'مدير مالي', s: 20000, a: 3000 },
+      { n: 'سارة القحطاني', t: 'محاسبة', s: 8000, a: 800 },
+      { n: 'عمر المطيري', t: 'مستشار', s: 15000, a: 1500 }
+    ],
+    supermarket: [
+      { n: 'سلطان الحربي', t: 'مدير فرع', s: 9000, a: 1000 },
+      { n: 'ريم المالكي', t: 'كاشيرة', s: 4000, a: 300 },
+      { n: 'ماجد العنزي', t: 'أمين مستودع', s: 4500, a: 400 },
+      { n: 'لمى الرشيد', t: 'مشرفة مبيعات', s: 6000, a: 500 }
+    ],
+    factory: [
+      { n: 'عبدالعزيز القحطاني', t: 'مدير إنتاج', s: 15000, a: 1500 },
+      { n: 'خالد السبيعي', t: 'مشرف خط إنتاج', s: 7000, a: 600 },
+      { n: 'منى العتيبي', t: 'أخصائية جودة', s: 6500, a: 500 },
+      { n: 'بندر الدوسري', t: 'عامل إنتاج', s: 4000, a: 300 }
+    ],
+    medical_lab: [
+      { n: 'أ. سعد العمري', t: 'مدير المختبر', s: 12000, a: 1200 },
+      { n: 'هند السلمي', t: 'أخصائية تحاليل', s: 6500, a: 600 },
+      { n: 'فيصل الغامدي', t: 'فني مختبر', s: 5000, a: 400 }
+    ],
+    hospital: [
+      { n: 'د. هالة الغامدي', t: 'مديرة الجودة', s: 18000, a: 2000 },
+      { n: 'مريم الشهري', t: 'ممرضة أولى', s: 7500, a: 800 },
+      { n: 'فهد الزهراني', t: 'صيدلي', s: 9000, a: 1000 },
+      { n: 'نورة المطيري', t: 'أخصائية مختبر', s: 8000, a: 700 }
+    ]
+  }[kind] || [{ n: 'موظف تجريبي', t: 'موظف', s: 5000, a: 500 }];
+
+  const emps = roster.map((x, i) => hrLib.createEmployee(db, {
+    name: x.n, department_id: deptIds[i % deptIds.length].id, job_title: x.t,
+    hire_date: '2025-03-01', basic_salary: x.s, allowances: x.a,
+    phone: `050${String(1000000 + i * 12345).slice(0, 7)}`, bank_account: `SA${38000000000 + i}0000`
+  }));
+
+  const annual = hrLib.createLeaveType(db, { name: 'إجازة سنوية', days_per_year: 21, is_paid: true });
+  hrLib.createLeaveType(db, { name: 'إجازة مرضية', days_per_year: 30, is_paid: true });
+  const unpaid = hrLib.createLeaveType(db, { name: 'إجازة بدون راتب', days_per_year: 15, is_paid: false });
+
+  const lv = hrLib.createLeave(db, { employee_id: emps[0].id, leave_type_id: annual.id, start_date: '2026-06-01', end_date: '2026-06-10' });
+  hrLib.setLeaveStatus(db, lv.id, 'approved');
+  hrLib.createLeave(db, { employee_id: emps[1].id, leave_type_id: unpaid.id, start_date: '2026-07-20', end_date: '2026-07-22' });
+
+  for (const e of emps) {
+    hrLib.upsertAttendance(db, { employee_id: e.id, month: '2026-06', working_days: 26, present_days: 25, absent_days: 1, overtime_hours: e.id % 2 ? 4 : 0 });
+  }
+
+  hrLib.generatePayroll(db, '2026-06');
+  hrLib.postPayroll(db, '2026-06');
+  hrLib.generatePayroll(db, '2026-07');
+  console.log(`  └ HR: ${emps.length} موظف في ${depNames.length} أقسام، راتب 2026-06 مرحّل`);
+}
+
 
 function acct(db, code) {
   return db.prepare(`SELECT * FROM accounts WHERE code = ?`).get(code);
@@ -67,6 +135,7 @@ seedCompany({
 
   j('2026-07-01', 'مصاريف اتصال وإنترنت', [L('5204', 4500), L('1111', 0, 4500)]);
   j('2026-08-01', 'تسويق وإعلان', [L('5206', 12000), L('1111', 0, 12000)]);
+  seedHR(db, year, 'corporate');
 });
 
 // ============ سوبر ماركت ============
@@ -148,6 +217,7 @@ seedCompany({
   j('2026-04-30', 'رواتب موظفي السوبر ماركت', [L('5201', 25000), L('1101', 0, 25000)]);
   j('2026-05-01', 'إيجار المقر التجاري', [L('5202', 30000), L('1101', 0, 30000)]);
   j('2026-05-15', 'مصروفات كهرباء وتبريد', [L('5203', 8000), L('1101', 0, 8000)]);
+  seedHR(db, year, 'supermarket');
 });
 
 // ============ مصنع ============
@@ -198,6 +268,7 @@ seedCompany({
     lines: [{ description: 'تعبئة عائلية - تشكيلة', qty: 3000, unit_price: 55 }] });
   inv({ kind: 'sale', party_id: customer.id, date: '2026-05-01', payment_method: 'sadad', fiscal_year_id: year.id,
     lines: [{ description: 'منتجات مصنعة - وافل', qty: 2500, unit_price: 35 }] });
+  seedHR(db, year, 'factory');
 });
 
 // ============ مخبر طبي ============
@@ -230,6 +301,7 @@ seedCompany({
   j('2026-03-31', 'رواتب طاقم المختبر', [L('5201', 45000), L('1111', 0, 45000)]);
   j('2026-04-01', 'إيجار المقر الطبي', [L('5202', 60000), L('1111', 0, 60000)]);
   j('2026-04-10', 'مصروف إهلاك الأجهزة الطبية', [L('5207', 18000), L('1599', 0, 18000)]);
+  seedHR(db, year, 'medical_lab');
 });
 
 // ============ مستشفى ============
@@ -300,6 +372,7 @@ seedCompany({
   j('2026-06-30', 'رواتب الأطباء والتمريض', [L('5220', 120000), L('1111', 0, 120000)]);
   j('2026-06-30', 'شراء أدوية ومستلزمات طبية', [L('5217', 45000), L('1111', 0, 45000)]);
   j('2026-07-01', 'إيجار مبنى المستشفى', [L('5202', 150000), L('1111', 0, 150000)]);
+  seedHR(db, year, 'hospital');
 });
 
 console.log('تم إنشاء البيانات التجريبية بنجاح.');
