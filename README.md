@@ -78,6 +78,8 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Employees & Departments, Leaves, Payroll, Fiscal Year Closing, Settings, and Users & Permissions.
 
 ---
+<img width="1366" height="668" alt="1" src="https://github.com/user-attachments/assets/9e69f47b-b37a-4059-851f-329c5e605a2b" />
+<img width="1366" height="668" alt="2" src="https://github.com/user-attachments/assets/115f06c7-96e1-45dc-9b41-5302f2ac2eb5" />
 
 # Hi there, I'm Asem Shahen 👋
 
