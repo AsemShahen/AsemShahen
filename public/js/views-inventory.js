@@ -796,16 +796,16 @@ const PosView = {
             </table>
           </div>
           <div class="pos-totals">
-            <div class="flex-between"><span>{{ t('الإجمالي قبل الضريبة:') }}</span><strong class="monospace">{{ fmt.money(taxable()) }}</strong></div>
-            <div class="flex-between"><span>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }}</span><strong class="monospace">{{ fmt.money(vatAmount()) }}</strong></div>
-            <div class="flex-between pos-grand"><span>{{ t('الإجمالي:') }}</span><strong class="monospace" style="color:var(--primary);font-size:20px;">{{ fmt.money(total()) }}</strong></div>
+            <div class="flex-between"><span>{{ t('الإجمالي قبل الضريبة:') }}</span><strong class="monospace">{{ fmt.money(taxable) }}</strong></div>
+            <div class="flex-between"><span>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }}</span><strong class="monospace">{{ fmt.money(vatAmount) }}</strong></div>
+            <div class="flex-between pos-grand"><span>{{ t('الإجمالي:') }}</span><strong class="monospace" style="color:var(--primary);font-size:20px;">{{ fmt.money(total) }}</strong></div>
             <label class="mt-2">{{ t('خصم على الفاتورة') }} <input type="number" v-model.number="form.discount" min="0" style="width:110px;"></label>
           </div>
         </div>
         <div class="panel-footer">
           <button class="btn btn-ghost" @click="clearCart">{{ t('تفريغ السلة') }}</button>
           <button class="btn btn-primary btn-lg" @click="checkout" :disabled="!cart.length || saving" style="flex:1;">
-            {{ saving ? t('جارٍ الحفظ...') : t('إتمام البيع') + ' · ' + fmt.money(total()) }}
+            {{ saving ? t('جارٍ الحفظ...') : t('إتمام البيع') + ' · ' + fmt.money(total) }}
           </button>
         </div>
       </div>
