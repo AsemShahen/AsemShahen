@@ -629,8 +629,8 @@ const PosView = {
       return this.cart.reduce((s, l) => s + l.line_total, 0);
     },
     taxable() { return Math.max(this.cartTotal - (Number(this.form.discount) || 0), 0); },
-    vatAmount() { return this.taxable() * (Number(this.form.vat_rate) || 0) / 100; },
-    total() { return this.taxable() + this.vatAmount(); },
+    vatAmount() { return this.taxable * (Number(this.form.vat_rate) || 0) / 100; },
+    total() { return this.taxable + this.vatAmount; },
     cartCount() { return this.cart.reduce((s, l) => s + l.qty, 0); }
   },
   methods: {
