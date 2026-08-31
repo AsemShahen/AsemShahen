@@ -157,7 +157,7 @@ const ProductsView = {
     openCreate() {
       this.editing = null;
       this.form = {
-        name: '', barcode: '', category: '', unit: '', purchase_price: 0, sale_price: 0,
+        name: '', barcode: '', category: '', unit: '', image: '', purchase_price: 0, sale_price: 0,
         min_stock: 0, vat_applicable: true, active: true,
         sale_account: '4101', purchase_account: '5101', cogs_account: '5104', inventory_account: '1301'
       };
@@ -167,6 +167,7 @@ const ProductsView = {
       this.editing = p;
       this.form = {
         name: p.name, barcode: p.barcode || '', category: p.category || '', unit: p.unit || '',
+        image: p.image || '', description: p.description || '',
         purchase_price: p.purchase_price, sale_price: p.sale_price, min_stock: p.min_stock || 0,
         vat_applicable: !!p.vat_applicable, active: !!p.active,
         sale_account: p.sale_account, purchase_account: p.purchase_account,
@@ -174,6 +175,16 @@ const ProductsView = {
       };
       this.showModal = true;
     },
+    onImageFile(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { this.toast(t('يرجى اختيار ملف صورة'), 'error'); e.target.value = ''; return; }
+      if (file.size > 1024 * 1024) { this.toast(t('حجم الصورة كبير، الحد الأقصى 1 ميغابايت'), 'error'); e.target.value = ''; return; }
+      const reader = new FileReader();
+      reader.onload = () => { this.form.image = reader.result; };
+      reader.readAsDataURL(file);
+    },
+    clearImage() { this.form.image = ''; },
     async save() {
       try {
         const body = { ...this.form, active: this.form.active ? 1 : 0, vat_applicable: this.form.vat_applicable ? 1 : 0 };
@@ -237,12 +248,13 @@ const ProductsView = {
           <table>
             <thead>
               <tr>
-                <th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('الباركود') }}</th><th>{{ t('الفئة') }}</th><th>{{ t('الوحدة') }}</th>
+                <th>{{ t('الصورة') }}</th><th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('الباركود') }}</th><th>{{ t('الفئة') }}</th><th>{{ t('الوحدة') }}</th>
                 <th>{{ t('سعر الشراء') }}</th><th>{{ t('سعر البيع') }}</th><th>{{ t('الحد الأدنى') }}</th><th>{{ t('الحالة') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="p in filtered" :key="p.id">
+                <td><img v-if="p.image" :src="p.image" class="prod-thumb" alt=""><span v-else class="muted">—</span></td>
                 <td class="monospace">{{ p.code || '—' }}</td>
                 <td><strong>{{ p.name }}</strong></td>
                 <td class="monospace" dir="ltr">{{ p.barcode || '—' }}</td>
@@ -258,7 +270,7 @@ const ProductsView = {
                   <button v-if="can('products', 'delete')" class="btn btn-sm btn-ghost" @click="remove(p)">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!products.length"><td colspan="10" class="muted">{{ t('لا توجد منتجات بعد') }}</td></tr>
+              <tr v-if="!products.length"><td colspan="11" class="muted">{{ t('لا توجد منتجات بعد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -270,6 +282,17 @@ const ProductsView = {
         <h3>{{ editing ? t('تعديل منتج') : t('إضافة منتج') }}</h3>
         <div class="form-grid">
           <label class="span2">{{ t('الاسم') }} <input v-model.trim="form.name"></label>
+          <label class="span2">
+            {{ t('الصورة') }}
+            <div class="flex" style="gap:8px;align-items:center;">
+              <input v-model.trim="form.image" dir="ltr" :placeholder="t('رابط الصورة أو ارفع ملفاً...')">
+              <label class="btn btn-sm btn-ghost" style="white-space:nowrap;">📷 {{ t('رفع') }}
+                <input type="file" accept="image/*" style="display:none;" @change="onImageFile">
+              </label>
+              <button v-if="form.image" type="button" class="btn btn-sm btn-ghost" @click="clearImage">✕</button>
+            </div>
+            <img v-if="form.image" :src="form.image" class="prod-preview" alt="">
+          </label>
           <label>{{ t('الباركود') }} <input v-model.trim="form.barcode" dir="ltr" :placeholder="t('مثال: 6258118000016')"></label>
           <label>{{ t('الفئة') }} <input v-model.trim="form.category" :placeholder="t('مثال: مواد غذائية')"></label>
           <label>{{ t('الوحدة') }} <input v-model.trim="form.unit" :placeholder="t('مثال: كرتون / كيس')"></label>
@@ -762,6 +785,7 @@ const PosView = {
           <input :placeholder="t('بحث عن منتج...')" v-model="searchText" style="margin-bottom:8px;width:100%;">
           <div class="pos-products">
             <div v-for="p in filteredProducts" :key="p.id" class="pos-product" @click="addToCart(p)">
+              <img v-if="p.image" :src="p.image" class="pos-product-img" alt="">
               <div class="pos-product-name">{{ p.name }}</div>
               <div class="pos-product-meta">
                 <span class="monospace" dir="ltr">{{ p.barcode || '—' }}</span>

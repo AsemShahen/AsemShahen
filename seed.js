@@ -159,14 +159,16 @@ seedCompany({
   const whCold = inventory.createWarehouse(db, { name: 'مستودع التبريد', location: 'الطابق الأرضي - غرفة التبريد' });
 
   const P = (data) => inventory.createProduct(db, data);
-  const pWater = P({ name: 'مياه معدنية 1.5 لتر', barcode: '6258118000016', category: 'مشروبات', unit: 'كرتون', purchase_price: 8, sale_price: 12, min_stock: 20 });
-  const pJuice = P({ name: 'عصير برتقال 1 لتر', barcode: '6281010312621', category: 'مشروبات', unit: 'كرتون', purchase_price: 14, sale_price: 19, min_stock: 15 });
-  const pRice = P({ name: 'أرز بسمتي 5 كغ', barcode: '6281025500186', category: 'مواد غذائية', unit: 'كيس', purchase_price: 35, sale_price: 45, min_stock: 10 });
-  const pSugar = P({ name: 'سكر ناعم 1 كغ', barcode: '6281025500120', category: 'مواد غذائية', unit: 'كيس', purchase_price: 4, sale_price: 6, min_stock: 50 });
-  const pOil = P({ name: 'زيت نباتي 1.5 لتر', barcode: '6281025500263', category: 'مواد غذائية', unit: 'عبوة', purchase_price: 22, sale_price: 30, min_stock: 25 });
-  const pMilk = P({ name: 'حليب طويل الأجل 1 لتر', barcode: '6281007067204', category: 'ألبان', unit: 'كرتون', purchase_price: 7, sale_price: 10, min_stock: 40 });
-  const pCheese = P({ name: 'جبنة بيضاء 500 غ', barcode: '6281007067205', category: 'ألبان', unit: 'عبوة', purchase_price: 12, sale_price: 17, min_stock: 30 });
-  const pDet = P({ name: 'منظف أطباق 500 مل', barcode: '6285000051003', category: 'منزلية', unit: 'عبوة', purchase_price: 6, sale_price: 9, min_stock: 20 });
+  const prodImg = (name, color) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="240" height="240" rx="16" fill="${color}"/><text x="50%" y="54%" font-family="Arial" font-size="30" fill="#fff" text-anchor="middle" dominant-baseline="middle">${name}</text></svg>`)}`;
+  const pWater = P({ name: 'مياه معدنية 1.5 لتر', barcode: '6258118000016', category: 'مشروبات', unit: 'كرتون', purchase_price: 8, sale_price: 12, min_stock: 20, image: prodImg('مياه', '#22c1a0') });
+  const pJuice = P({ name: 'عصير برتقال 1 لتر', barcode: '6281010312621', category: 'مشروبات', unit: 'كرتون', purchase_price: 14, sale_price: 19, min_stock: 15, image: prodImg('عصير', '#f59e0b') });
+  const pRice = P({ name: 'أرز بسمتي 5 كغ', barcode: '6281025500186', category: 'مواد غذائية', unit: 'كيس', purchase_price: 35, sale_price: 45, min_stock: 10, image: prodImg('أرز', '#8d6e63') });
+  const pSugar = P({ name: 'سكر ناعم 1 كغ', barcode: '6281025500120', category: 'مواد غذائية', unit: 'كيس', purchase_price: 4, sale_price: 6, min_stock: 50, image: prodImg('سكر', '#bdbdbd') });
+  const pOil = P({ name: 'زيت نباتي 1.5 لتر', barcode: '6281025500263', category: 'مواد غذائية', unit: 'عبوة', purchase_price: 22, sale_price: 30, min_stock: 25, image: prodImg('زيت', '#d97706') });
+  const pMilk = P({ name: 'حليب طويل الأجل 1 لتر', barcode: '6281007067204', category: 'ألبان', unit: 'كرتون', purchase_price: 7, sale_price: 10, min_stock: 40, image: prodImg('حليب', '#60a5fa') });
+  const pCheese = P({ name: 'جبنة بيضاء 500 غ', barcode: '6281007067205', category: 'ألبان', unit: 'عبوة', purchase_price: 12, sale_price: 17, min_stock: 30, image: prodImg('جبنة', '#fcd34d') });
+  const pDet = P({ name: 'منظف أطباق 500 مل', barcode: '6285000051003', category: 'منزلية', unit: 'عبوة', purchase_price: 6, sale_price: 9, min_stock: 20, image: prodImg('منظف', '#38bdf8') });
 
   // ---------- مشتريات (تزيد المخزون وتثبت في حساب المخزون) ----------
   inv({ kind: 'purchase', party_id: supplier.id, date: '2026-01-10', payment_method: 'bank_transfer', fiscal_year_id: year.id,
