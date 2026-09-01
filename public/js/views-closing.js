@@ -135,7 +135,14 @@ const SettingsView = {
   name: 'SettingsView',
   mixins: [CommonMixin],
   data() {
-    return { form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false };
+    return {
+      tab: 'company',
+      form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false,
+      dbInfo: null, dbBusy: false, dbResult: null
+    };
+  },
+  computed: {
+    isAdmin() { const u = getAuthUser(); return !!(u && u.role === 'admin'); }
   },
   created() {
     this.form = {
@@ -193,12 +200,122 @@ const SettingsView = {
         await this.loadZatca();
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.savingZatca = false; }
+    },
+    switchTab(tab) {
+      this.tab = tab;
+      if (tab === 'db') this.loadDbTools();
+    },
+    fmtFileSize(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    },
+    setDbResult(kind, type, lines) { this.dbResult = { kind, type, lines }; },
+    async loadDbTools() {
+      this.dbBusy = true;
+      try {
+        this.dbInfo = await this.api(`/api/companies/${this.company.id}/db-tools`);
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.dbBusy = false; }
+    },
+    async createBackup() {
+      this.dbBusy = true;
+      try {
+        const b = await this.api(`/api/companies/${this.company.id}/db-tools/backup`, { method: 'POST', body: {} });
+        this.toast(t('تم إنشاء النسخة الاحتياطية'));
+        this.setDbResult('backup', 'success', [
+          t('تم إنشاء النسخة الاحتياطية بنجاح'),
+          b.filename + ' (' + this.fmtFileSize(b.size) + ')'
+        ]);
+        await this.loadDbTools();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.dbBusy = false; }
+    },
+    async downloadBackup(b) {
+      try {
+        const r = await apiFetch(`/api/companies/${this.company.id}/db-tools/backups/${encodeURIComponent(b.filename)}`);
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || t('تعذر تنزيل النسخة الاحتياطية')); }
+        const blob = await r.blob();
+        downloadFile(b.filename, blob, 'application/octet-stream');
+        this.toast(t('تم تنزيل النسخة الاحتياطية'));
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async restoreSelected(b) {
+      if (!confirm(t('هل تريد استعادة هذه النسخة الاحتياطية؟ سيتم استبدال بيانات الشركة الحالية.'))) return;
+      this.dbBusy = true;
+      try {
+        await this.api(`/api/companies/${this.company.id}/db-tools/restore`, { method: 'POST', body: { filename: b.filename } });
+        this.toast(t('تمت استعادة النسخة الاحتياطية بنجاح'));
+        this.setDbResult('restore', 'success', [t('تمت استعادة النسخة الاحتياطية بنجاح')]);
+        this.$emit('refresh');
+        await this.loadDbTools();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.dbBusy = false; }
+    },
+    async onUploadBackup(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!confirm(t('هل تريد استعادة هذا الملف كقاعدة بيانات لهذه الشركة؟ سيتم استبدال البيانات الحالية.'))) { e.target.value = ''; return; }
+      this.dbBusy = true;
+      try {
+        const r = await apiFetch(`/api/companies/${this.company.id}/db-tools/restore-upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || t('فشلت استعادة النسخة الاحتياطية'));
+        this.toast(t('تمت استعادة النسخة الاحتياطية بنجاح'));
+        this.setDbResult('restore', 'success', [t('تمت استعادة النسخة الاحتياطية بنجاح')]);
+        this.$emit('refresh');
+        await this.loadDbTools();
+      } catch (err) { this.toast(err.message, 'error'); }
+      finally { this.dbBusy = false; e.target.value = ''; }
+    },
+    async compressDb() {
+      this.dbBusy = true;
+      try {
+        const r = await this.api(`/api/companies/${this.company.id}/db-tools/compress`, { method: 'POST', body: {} });
+        this.toast(t('تم ضغط قاعدة البيانات'));
+        this.setDbResult('compress', 'success', [
+          t('تم ضغط قاعدة البيانات بنجاح'),
+          t('الحجم قبل الضغط: {s}', { s: this.fmtFileSize(r.before) }),
+          t('الحجم بعد الضغط: {s}', { s: this.fmtFileSize(r.after) }),
+          t('المساحة الموفرة: {s}', { s: this.fmtFileSize(r.saved) })
+        ]);
+        await this.loadDbTools();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.dbBusy = false; }
+    },
+    async repairDb() {
+      this.dbBusy = true;
+      try {
+        const r = await this.api(`/api/companies/${this.company.id}/db-tools/repair`, { method: 'POST', body: {} });
+        const lines = [
+          r.integrity === 'ok' ? t('فحص السلامة: القاعدة سليمة ✓') : (t('توجد مشاكل في السلامة:') + ' ' + String(r.integrity)),
+          t('انتهاكات المفاتيح الأجنبية: {n}', { n: r.fk_violations }),
+          r.vacuum_done ? t('إعادة بناء الملف (VACUUM) تمت بنجاح') : (t('فشلت إعادة البناء:') + ' ' + (r.vacuum_error || ''))
+        ];
+        this.toast(r.integrity === 'ok' ? t('تم فحص وإصلاح قاعدة البيانات') : t('تم الفحص: راجع النتائج أدناه'), r.integrity === 'ok' ? 'success' : 'error');
+        this.setDbResult('repair', r.integrity === 'ok' ? 'success' : 'error', lines);
+        await this.loadDbTools();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.dbBusy = false; }
     }
   },
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
     <div v-if="!can('settings', 'edit')" class="alert info">{{ t('أنت تملك صلاحية العرض فقط لهذه النافذة — لا يمكنك تعديل البيانات أو إعدادات ZATCA.') }}</div>
+
+    <div class="flex flex-wrap mb-2" style="gap:8px;">
+      <button class="btn btn-sm" :class="tab === 'company' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('company')">{{ t('بيانات الشركة') }}</button>
+      <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
+    </div>
+
+    <template v-if="tab === 'company'">
     <div class="panel" style="max-width:800px;">
       <div class="panel-header"><h3>{{ t('بيانات الشركة والإعدادات') }}</h3></div>
       <div class="panel-body">
@@ -228,7 +345,9 @@ const SettingsView = {
         </div>
       </div>
     </div>
+    </template>
 
+    <template v-if="tab === 'zatca'">
     <div class="panel" style="max-width:800px;border-top:4px solid var(--primary);">
       <div class="panel-header"><h3>{{ t('الفاتورة الإلكترونية والربط مع هيئة الزكاة (ZATCA)') }}</h3></div>
       <div class="panel-body">
@@ -284,6 +403,61 @@ const SettingsView = {
         </div>
       </div>
     </div>
+    </template>
+
+    <template v-if="tab === 'db'">
+      <div v-if="!isAdmin" class="alert info">{{ t('إدارة قواعد البيانات متاحة لمدير النظام فقط') }}</div>
+      <template v-else>
+        <div class="flex flex-wrap" style="gap:8px;margin-bottom:12px;">
+          <button class="btn btn-primary" @click="createBackup" :disabled="dbBusy">💾 {{ t('إنشاء نسخة احتياطية الآن') }}</button>
+          <button class="btn btn-ghost" @click="loadDbTools" :disabled="dbBusy">{{ t('تحديث') }}</button>
+          <button class="btn btn-ghost" @click="compressDb" :disabled="dbBusy">{{ t('ضغط قاعدة البيانات') }}</button>
+          <button class="btn btn-ghost" @click="repairDb" :disabled="dbBusy">{{ t('إصلاح قاعدة البيانات') }}</button>
+        </div>
+
+        <div v-if="dbInfo" class="alert info">
+          {{ t('حجم قاعدة البيانات الحالية: {s}', { s: fmtFileSize(dbInfo.size) }) }}
+          <span v-if="dbInfo.mtime"> · {{ t('آخر تعديل: {d}', { d: fmt.date(dbInfo.mtime) }) }}</span>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h3>{{ t('النسخ الاحتياطية المتاحة') }} <span class="badge blue">{{ dbInfo ? dbInfo.backups.length : 0 }}</span></h3></div>
+          <div class="panel-body pad-0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>{{ t('الملف') }}</th><th>{{ t('الحجم') }}</th><th>{{ t('التاريخ') }}</th><th></th></tr></thead>
+                <tbody>
+                  <tr v-for="b in dbInfo ? dbInfo.backups : []" :key="b.filename">
+                    <td class="monospace" dir="ltr">{{ b.filename }}</td>
+                    <td class="num">{{ fmtFileSize(b.size) }}</td>
+                    <td>{{ fmt.date(b.mtime) }}</td>
+                    <td>
+                      <button class="btn btn-sm btn-ghost" @click="downloadBackup(b)" :disabled="dbBusy">{{ t('تنزيل') }}</button>
+                      <button class="btn btn-sm btn-primary" @click="restoreSelected(b)" :disabled="dbBusy">{{ t('استعادة') }}</button>
+                    </td>
+                  </tr>
+                  <tr v-if="!dbInfo || !dbInfo.backups.length"><td colspan="4" class="muted">{{ t('لا توجد نسخ احتياطية بعد') }}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h3>{{ t('استعادة نسخة احتياطية من ملف') }}</h3></div>
+          <div class="panel-body">
+            <p class="muted">{{ t('اختر ملف نسخة احتياطية (.db) من جهازك لاستعادته كقاعدة بيانات لهذه الشركة. تُنشأ نسخة أمان تلقائية قبل الاستعادة.') }}</p>
+            <label class="btn btn-ghost" style="display:inline-block;">📁 {{ t('اختيار ملف واستعادته') }}
+              <input type="file" accept=".db,application/octet-stream" style="display:none;" @change="onUploadBackup" :disabled="dbBusy">
+            </label>
+          </div>
+        </div>
+
+        <div v-if="dbResult" class="alert" :class="dbResult.type">
+          <div v-for="(line, i) in dbResult.lines" :key="i">{{ line }}</div>
+        </div>
+      </template>
+    </template>
   </div>
   `
 };

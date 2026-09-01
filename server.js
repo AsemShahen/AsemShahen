@@ -1,5 +1,6 @@
 'use strict';
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
 const { listCompanies, getCompany, createCompany, updateCompany, deleteCompany } = require('./lib/master-db');
@@ -12,6 +13,7 @@ const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
 const hrLib = require('./lib/hr');
+const dbTools = require('./lib/db-tools');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1330,6 +1332,76 @@ app.get('/api/companies/:companyId/dashboard', windowPerm('dashboard', 'view'), 
 
   db.close();
   res.json({ fy, stmt, bs, sales, purchases, receivables, payables, cash, bank, salesByMonth, recentEntries, recentInvoices });
+});
+
+// ==================== أدوات قواعد البيانات (نسخ احتياطي / استعادة / ضغط / إصلاح) ====================
+app.get('/api/companies/:companyId/db-tools', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try { res.json(dbTools.info(company.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/companies/:companyId/db-tools/backup', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try { res.json(dbTools.createBackup(company.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/companies/:companyId/db-tools/backups/:filename', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try {
+    const file = dbTools.resolveBackup(company.id, req.params.filename);
+    res.download(file, req.params.filename);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/companies/:companyId/db-tools/restore', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try { res.json(dbTools.restoreFromBackup(company.id, req.body && req.body.filename)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// استعادة من ملف يُرفع مباشرة (application/octet-stream)
+app.post('/api/companies/:companyId/db-tools/restore-upload', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const chunks = [];
+  let size = 0;
+  req.on('data', c => {
+    size += c.length;
+    if (size > 30 * 1024 * 1024) { req.destroy(); return res.status(400).json({ error: 'حجم الملف يتجاوز الحد الأقصى (30 ميغابايت)' }); }
+    chunks.push(c);
+  });
+  req.on('end', () => {
+    try {
+      const tmp = path.join(dbTools.BACKUP_DIR, `.restore_tmp_${company.id}_${Date.now()}.db`);
+      fs.writeFileSync(tmp, Buffer.concat(chunks));
+      const result = dbTools.restoreFromUpload(company.id, tmp);
+      fs.unlinkSync(tmp);
+      res.json(result);
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+  req.on('error', () => { res.status(400).json({ error: 'فشل في قراءة الملف المرفوع' }); });
+});
+
+app.post('/api/companies/:companyId/db-tools/compress', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try { res.json(dbTools.compress(company.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/companies/:companyId/db-tools/repair', adminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try { res.json(dbTools.repair(company.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.use((err, req, res, next) => {

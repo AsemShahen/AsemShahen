@@ -17,3 +17,6 @@ Thumbs.db
 # SQLite WAL (transient)
 *.db-shm
 *.db-wal
+
+# Database backups
+data/backups/
