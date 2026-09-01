@@ -18,6 +18,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Human Resources (HR)**: Departments, employees, attendance, leave management (approve/reject), and monthly payroll generation with automatic journal posting (debit 5201 / credit 2104).
 - **Hospital Module** (for hospitals): Patients, doctors & departments, appointments, medical records, and patient billing.
 - **Per-Company User Permissions**: Users can be granted permissions scoped to specific companies and windows.
+- **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
 
 ## Getting Started
@@ -69,6 +70,7 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 | `lib/inventory.js` | Warehouses, products, stock, counts, POS |
 | `lib/hr.js` | HR: departments, employees, attendance, leaves, payroll |
 | `lib/hospital.js` | Hospital module |
+| `lib/db-tools.js` | DB backup / restore / compress / repair |
 | `lib/zatca/` | ZATCA e-invoicing (QR + XML + signing + submission) |
 | `seed.js` | Demo data for 5 companies |
 | `public/` | Web UI (Vue 3 SPA, no build step) |
@@ -76,6 +78,12 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 ## UI Overview
 
 All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Employees & Departments, Leaves, Payroll, Fiscal Year Closing, Settings, and Users & Permissions.
+
+## Settings Tabs
+
+- **Company Data**: company name, VAT rate, CR number, tax number, currency, fiscal year start month, address, phone and email.
+- **ZATCA E-Invoicing**: enable automatic submission, choose Sandbox/Production mode, and store CSID credentials, private key (PEM), certificate and OTP.
+- **Databases** (admin only): create a backup now, download / restore backups (from the list or by uploading a `.db` file), compress the database, and repair it. An automatic safety backup is created before every restore.
 
 ---
 <img width="1366" height="668" alt="1" src="https://github.com/user-attachments/assets/9e69f47b-b37a-4059-851f-329c5e605a2b" />
