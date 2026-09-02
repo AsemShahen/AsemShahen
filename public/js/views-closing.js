@@ -138,6 +138,7 @@ const SettingsView = {
     return {
       tab: 'company',
       form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false,
+      whatsapp: null, waForm: {}, savingWa: false,
       dbInfo: null, dbBusy: false, dbResult: null
     };
   },
@@ -158,6 +159,7 @@ const SettingsView = {
       email: this.company.email
     };
     this.loadZatca();
+    this.loadWhatsapp();
   },
   methods: {
     async save() {
@@ -204,6 +206,42 @@ const SettingsView = {
     switchTab(tab) {
       this.tab = tab;
       if (tab === 'db') this.loadDbTools();
+    },
+    async loadWhatsapp() {
+      try {
+        const w = await this.api(`/api/companies/${this.company.id}/whatsapp-settings`);
+        this.whatsapp = w;
+        this.waForm = {
+          enabled: !!w.enabled,
+          number: w.number || '',
+          apiToken: '',
+          phoneId: w.phoneId || '',
+          tplSale: w.tplSale || '',
+          tplPurchase: w.tplPurchase || '',
+          tplPos: w.tplPos || '',
+          tplStatement: w.tplStatement || ''
+        };
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async saveWhatsapp() {
+      this.savingWa = true;
+      try {
+        const body = {
+          enabled: this.waForm.enabled,
+          number: this.waForm.number,
+          phoneId: this.waForm.phoneId,
+          tplSale: this.waForm.tplSale,
+          tplPurchase: this.waForm.tplPurchase,
+          tplPos: this.waForm.tplPos,
+          tplStatement: this.waForm.tplStatement
+        };
+        if (this.waForm.apiToken) body.apiToken = this.waForm.apiToken;
+        const saved = await this.api(`/api/companies/${this.company.id}/whatsapp-settings`, { method: 'PUT', body });
+        this.toast(t('تم حفظ إعدادات الواتساب'));
+        this.whatsapp = saved;
+        this.waForm.apiToken = '';
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.savingWa = false; }
     },
     fmtFileSize(bytes) {
       const n = Number(bytes) || 0;
@@ -312,6 +350,7 @@ const SettingsView = {
     <div class="flex flex-wrap mb-2" style="gap:8px;">
       <button class="btn btn-sm" :class="tab === 'company' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('company')">{{ t('بيانات الشركة') }}</button>
       <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'whatsapp' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('whatsapp')">{{ t('الواتساب') }}</button>
       <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
     </div>
 
@@ -400,6 +439,56 @@ const SettingsView = {
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? t('جارٍ الحفظ...') : t('حفظ إعدادات ZATCA') }}</button>
           <span class="muted" v-if="zatca && !zatca.csidSet">{{ t('الرقم الضريبي للمنشأة يُقرأ من "بيانات الشركة" أعلاه.') }}</span>
+        </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'whatsapp'">
+    <div class="panel" style="max-width:800px;border-top:4px solid #25D366;">
+      <div class="panel-header"><h3>{{ t('ربط الواتساب') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('ارسل الفواتير والإيصالات وكشوفات الحساب مباشرة لعملائك ومورديك عبر واتساب.') }}
+          {{ t('بدون إعدادات يعمل النظام برابط wa.me يفتح واتساب بنص جاهز. لتفعيل الإرسال التلقائي أضف بيانات WhatsApp Business Cloud API.') }}
+        </div>
+
+        <div v-if="whatsapp" class="flex flex-wrap" style="gap:8px;margin-bottom:14px;">
+          <span class="badge" :class="whatsapp.enabled ? 'green' : 'gray'">{{ whatsapp.enabled ? t('الواتساب مفعّل') : t('غير مفعّل') }}</span>
+          <span class="badge" :class="whatsapp.apiConfigured ? 'green' : 'yellow'">{{ whatsapp.apiConfigured ? t('Cloud API جاهزة') : t('يرسل برابط wa.me') }}</span>
+          <span v-if="whatsapp.apiTokenSet" class="badge gray">{{ t('تم ضبط رمز الوصول') }}</span>
+        </div>
+
+        <div class="form-grid">
+          <label class="span2 flex" style="flex-direction:row;gap:8px;">
+            <input type="checkbox" v-model="waForm.enabled" style="width:auto;"> {{ t('تفعيل إرسال الواتساب') }}
+          </label>
+          <label class="span2">{{ t('رقم واتساب المنشأة (لعرض الرابط)') }}
+            <input v-model.trim="waForm.number" dir="ltr" :placeholder="t('مثال: 966501234567')">
+          </label>
+          <label>{{ t('معرّف رقم الهاتف (Phone Number ID)') }}
+            <input v-model.trim="waForm.phoneId" dir="ltr" placeholder="111111111111111">
+          </label>
+          <label>{{ t('رمز الوصول (Access Token)') }}
+            <input v-model.trim="waForm.apiToken" dir="ltr" type="password" :placeholder="whatsapp && whatsapp.apiTokenSet ? t('مضبوط مسبقاً — اتركه فارغاً للاحتفاظ به') : ''">
+          </label>
+          <label class="span2">{{ t('قالب رسالة فاتورة المبيعات') }}
+            <textarea v-model.trim="waForm.tplSale" rows="3" dir="rtl"></textarea>
+          </label>
+          <label class="span2">{{ t('قالب رسالة فاتورة المشتريات') }}
+            <textarea v-model.trim="waForm.tplPurchase" rows="3" dir="rtl"></textarea>
+          </label>
+          <label class="span2">{{ t('قالب رسالة إيصال نقطة البيع') }}
+            <textarea v-model.trim="waForm.tplPos" rows="3" dir="rtl"></textarea>
+          </label>
+          <label class="span2">{{ t('قالب رسالة كشف الحساب') }}
+            <textarea v-model.trim="waForm.tplStatement" rows="3" dir="rtl"></textarea>
+          </label>
+          <p class="span2 muted" style="font-size:12px;">{{ t('الرموز المتاحة:') }} {company}, {party}, {invoice_no}, {date}, {sub_total}, {vat}, {total}, {paid}, {due}, {outstanding}</p>
+        </div>
+
+        <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveWhatsapp" :disabled="savingWa">{{ savingWa ? t('جارٍ الحفظ...') : t('حفظ إعدادات الواتساب') }}</button>
         </div>
       </div>
     </div>

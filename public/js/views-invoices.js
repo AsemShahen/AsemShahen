@@ -47,6 +47,16 @@ const InvoicesView = {
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
+    async sendWhatsApp(i) {
+      try {
+        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
+          method: 'POST',
+          body: { type: 'invoice', kind: this.kind, invoiceId: i.id }
+        });
+        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال الفاتورة عبر واتساب'));
+        else window.open(r.link, '_blank');
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
     openCreate() {
       this.form = {
         party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: Number(this.info.settings.vat_rate) || 15,
@@ -266,6 +276,7 @@ const InvoicesView = {
                 </td>
                 <td>
                   <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">{{ t('تحصيل / سداد') }}</button>
+                  <button v-if="i.party && i.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(i)">💬 {{ t('واتساب') }}</button>
                   <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
                 </td>
               </tr>
@@ -396,6 +407,7 @@ const InvoicesView = {
               </table>
               <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
                 <button class="btn btn-sm btn-ghost" @click="downloadXml" :disabled="!detail.zatca.xml_data">{{ t('تحميل XML') }}</button>
+                <button v-if="detail.party && detail.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(detail)">💬 {{ t('إرسال عبر واتساب') }}</button>
                 <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى ZATCA') }}</button>
               </div>
             </div>
@@ -436,6 +448,16 @@ const PartiesView = {
       finally { this.loading = false; }
     },
     setType(t) { this.type = t; this.load(); },
+    async sendStatement(p) {
+      try {
+        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
+          method: 'POST',
+          body: { type: 'statement', partyId: p.id, kind: this.type }
+        });
+        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال كشف الحساب عبر واتساب'));
+        else window.open(r.link, '_blank');
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
     openCreate() {
       this.editing = null;
       this.form = { type: this.type, name: '', tax_id: '', phone: '', email: '', address: '', opening_balance: 0 };
@@ -533,7 +555,10 @@ const PartiesView = {
                 <td dir="ltr" style="text-align:right;">{{ p.phone || '—' }}</td>
                 <td dir="ltr" style="text-align:right;">{{ p.email || '—' }}</td>
                 <td class="num">{{ fmt.money(p.outstanding || 0) }}</td>
-                <td><button v-if="can('parties', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(p)">{{ t('تعديل') }}</button></td>
+                <td>
+                  <button v-if="p.phone" class="btn btn-sm btn-ghost" @click="sendStatement(p)">💬 {{ t('كشف حساب') }}</button>
+                  <button v-if="can('parties', 'edit')" class="btn btn-sm btn-ghost" @click="openEdit(p)">{{ t('تعديل') }}</button>
+                </td>
               </tr>
               <tr v-if="!parties.length"><td colspan="6" class="muted">{{ t('لا يوجد {x} بعد', { x: type === 'customer' ? t('عملاء') : t('موردون') }) }}</td></tr>
             </tbody>

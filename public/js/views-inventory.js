@@ -634,7 +634,7 @@ const PosView = {
     return {
       warehouses: [], products: [], methods: [], cart: [], barcodeInput: '', qtyInput: 1,
       loading: true, alert: null, saving: false,
-      form: { warehouse_id: '', date: '', vat_rate: 0, discount: 0, payment_method: 'cash', notes: '' },
+      form: { warehouse_id: '', date: '', vat_rate: 0, discount: 0, payment_method: 'cash', notes: '', phone: '' },
       receipt: null, searchText: ''
     };
   },
@@ -730,6 +730,7 @@ const PosView = {
         };
         const inv = await this.api(`/api/companies/${this.company.id}/pos/sell`, { method: 'POST', body });
         this.receipt = {
+          id: inv.id,
           invoice_no: inv.invoice_no,
           date: inv.date,
           lines: inv.lines,
@@ -738,11 +739,13 @@ const PosView = {
           vat: inv.vat,
           total: inv.total,
           payment_method: this.form.payment_method,
-          zatca_status: inv.zatca_status
+          zatca_status: inv.zatca_status,
+          phone: (this.form.phone || '').trim()
         };
         this.cart = [];
         this.form.discount = 0;
         this.form.notes = '';
+        this.form.phone = '';
         await this.load();
         this.$emit('refresh');
       } catch (e) { this.toast(e.message, 'error'); }
@@ -762,6 +765,17 @@ const PosView = {
         rows,
         footer: [t('الإجمالي:') + ' ' + this.fmt.money(this.receipt.total), t('طريقة الدفع:') + ' ' + this.paymentLabel(this.receipt.payment_method)]
       });
+    },
+    async sendReceipt() {
+      if (!this.receipt) return;
+      try {
+        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
+          method: 'POST',
+          body: { type: 'pos', invoiceId: this.receipt.id, phone: this.receipt.phone }
+        });
+        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال الإيصال عبر واتساب'));
+        else window.open(r.link, '_blank');
+      } catch (e) { this.toast(e.message, 'error'); }
     }
   },
   template: `
@@ -770,6 +784,7 @@ const PosView = {
 
     <div class="pos-header mb-2">
       <input ref="barcode" v-model.trim="barcodeInput" @keyup.enter="scan" :placeholder="t('امسح الباركود أو اكتبه ثم Enter...')" class="pos-barcode" dir="ltr">
+      <input v-model.trim="form.phone" :placeholder="t('واتساب العميل (اختياري)')" class="pos-phone" dir="ltr" style="max-width:150px;">
       <select v-model="form.warehouse_id" class="pos-wh">
         <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
       </select>
@@ -859,6 +874,7 @@ const PosView = {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="receipt = null">{{ t('إغلاق') }}</button>
+          <button v-if="receipt.phone" class="btn btn-ghost" @click="sendReceipt">💬 {{ t('إرسال عبر واتساب') }}</button>
           <button class="btn btn-primary" @click="printReceipt">{{ t('🖨️ طباعة الإيصال') }}</button>
         </div>
       </div>

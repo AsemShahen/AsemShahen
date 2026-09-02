@@ -14,6 +14,7 @@ const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
 const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
+const whatsappLib = require('./lib/whatsapp');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -545,6 +546,81 @@ app.put('/api/companies/:companyId/zatca-settings', windowPerm('settings', 'edit
   const saved = zatcaLib.getConfig(db);
   db.close();
   res.json(zatcaLib.maskConfig(saved));
+});
+
+// ==================== ربط الواتساب ====================
+function waPerm(req, res, next) {
+  const companyId = Number(req.params.companyId);
+  const windows = ['invoices-sale', 'invoices-purchase', 'parties', 'pos'];
+  if (windows.some(w => usersLib.hasPerm(req.user, companyId, w, 'view'))) return next();
+  return res.status(403).json({ error: 'ليست لديك صلاحية لإرسال واتساب' });
+}
+
+app.get('/api/companies/:companyId/whatsapp-settings', windowPerm('settings', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const config = whatsappLib.getConfig(db);
+  db.close();
+  res.json(whatsappLib.maskConfig(config));
+});
+
+app.put('/api/companies/:companyId/whatsapp-settings', windowPerm('settings', 'edit'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const b = req.body;
+  const existing = whatsappLib.getConfig(db);
+  whatsappLib.saveConfig(db, {
+    enabled: b.enabled !== undefined ? !!b.enabled : existing.enabled,
+    number: b.number !== undefined ? b.number : existing.number,
+    apiToken: b.apiToken !== undefined ? b.apiToken : existing.apiToken,
+    phoneId: b.phoneId !== undefined ? b.phoneId : existing.phoneId,
+    tplSale: b.tplSale !== undefined ? b.tplSale : existing.tplSale,
+    tplPurchase: b.tplPurchase !== undefined ? b.tplPurchase : existing.tplPurchase,
+    tplPos: b.tplPos !== undefined ? b.tplPos : existing.tplPos,
+    tplStatement: b.tplStatement !== undefined ? b.tplStatement : existing.tplStatement
+  });
+  const saved = whatsappLib.getConfig(db);
+  db.close();
+  res.json(whatsappLib.maskConfig(saved));
+});
+
+// إرسال فاتورة / إيصال / كشف حساب عبر واتساب
+// body: { type: 'invoice', kind, invoiceId } | { type: 'pos', invoiceId, phone? } | { type: 'statement', partyId } | { type: 'custom', phone, text }
+app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const b = req.body || {};
+  try {
+    const config = whatsappLib.getConfig(db);
+    let to = '', text = '', party = '';
+    if (b.type === 'invoice') {
+      const m = whatsappLib.invoiceMessage(db, company, Number(b.invoiceId), b.kind || 'sale');
+      to = m.to; text = m.text; party = m.party;
+    } else if (b.type === 'pos') {
+      const m = whatsappLib.posMessage(db, company, Number(b.invoiceId), b.phone);
+      to = m.to; text = m.text; party = m.party;
+    } else if (b.type === 'statement') {
+      const m = whatsappLib.statementMessage(db, company, Number(b.partyId));
+      to = m.to; text = m.text; party = m.party;
+    } else if (b.type === 'custom') {
+      to = b.phone || config.number;
+      if (!to) throw new Error('يرجى إدخال رقم الهاتف');
+      text = String(b.text || '');
+      if (!text.trim()) throw new Error('يرجى إدخال نص الرسالة');
+    } else {
+      throw new Error('نوع الإرسال غير معروف');
+    }
+    const link = whatsappLib.waLink(to, text);
+    const sent = config.enabled ? await whatsappLib.send(config, to, text) : { method: 'link' };
+    db.close();
+    res.json({ to, party, text, link, method: sent.method, sent: sent.sent === true, api_error: sent.api_error || null });
+  } catch (e) {
+    db.close();
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ==================== طرق الدفع ====================
