@@ -19,6 +19,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Hospital Module** (for hospitals): Patients, doctors & departments, appointments, medical records, and patient billing.
 - **Per-Company User Permissions**: Users can be granted permissions scoped to specific companies and windows.
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
+- **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
 
 ## Getting Started
@@ -84,6 +85,7 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 - **Company Data**: company name, VAT rate, CR number, tax number, currency, fiscal year start month, address, phone and email.
 - **ZATCA E-Invoicing**: enable automatic submission, choose Sandbox/Production mode, and store CSID credentials, private key (PEM), certificate and OTP.
 - **Databases** (admin only): create a backup now, download / restore backups (from the list or by uploading a `.db` file), compress the database, and repair it. An automatic safety backup is created before every restore.
+- **WhatsApp**: enable WhatsApp sending, set the business number and optional WhatsApp Business Cloud API credentials (Phone Number ID + Access Token), and edit the message templates for sales invoices, purchase invoices, POS receipts and account statements.
 
 ---
 <img width="1366" height="668" alt="1" src="https://github.com/user-attachments/assets/9e69f47b-b37a-4059-851f-329c5e605a2b" />
