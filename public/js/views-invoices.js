@@ -3,7 +3,7 @@
 // ==================== الفواتير ====================
 const InvoicesView = {
   name: 'InvoicesView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, WaSendMixin],
   props: { kind: { type: String, required: true } },
   data() {
     return {
@@ -48,14 +48,7 @@ const InvoicesView = {
       finally { this.loading = false; }
     },
     async sendWhatsApp(i) {
-      try {
-        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
-          method: 'POST',
-          body: { type: 'invoice', kind: this.kind, invoiceId: i.id }
-        });
-        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال الفاتورة عبر واتساب'));
-        else window.open(r.link, '_blank');
-      } catch (e) { this.toast(e.message, 'error'); }
+      await this.askWhatsApp({ type: 'invoice', kind: this.kind, invoiceId: i.id });
     },
     openCreate() {
       this.form = {
@@ -418,6 +411,8 @@ const InvoicesView = {
         </div>
       </div>
     </div>
+
+    <wa-preview-modal :preview="waPreview" :busy="waBusy" @close="waPreview = null" @confirm="confirmWhatsApp"></wa-preview-modal>
   </div>
   `
 };
@@ -425,7 +420,7 @@ const InvoicesView = {
 // ==================== العملاء والموردون ====================
 const PartiesView = {
   name: 'PartiesView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, WaSendMixin],
   data() {
     return {
       type: 'customer', parties: [], loading: true, alert: null, filter: '',
@@ -449,14 +444,7 @@ const PartiesView = {
     },
     setType(t) { this.type = t; this.load(); },
     async sendStatement(p) {
-      try {
-        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
-          method: 'POST',
-          body: { type: 'statement', partyId: p.id, kind: this.type }
-        });
-        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال كشف الحساب عبر واتساب'));
-        else window.open(r.link, '_blank');
-      } catch (e) { this.toast(e.message, 'error'); }
+      await this.askWhatsApp({ type: 'statement', partyId: p.id, kind: this.type });
     },
     openCreate() {
       this.editing = null;
@@ -583,6 +571,8 @@ const PartiesView = {
         </div>
       </div>
     </div>
+
+    <wa-preview-modal :preview="waPreview" :busy="waBusy" @close="waPreview = null" @confirm="confirmWhatsApp"></wa-preview-modal>
   </div>
   `
 };

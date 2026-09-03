@@ -938,7 +938,13 @@ const EN_DICT = {
   'كشف حساب': 'Statement',
   'تم إرسال كشف الحساب عبر واتساب': 'Statement sent via WhatsApp',
   'واتساب العميل (اختياري)': 'Customer WhatsApp (optional)',
-  'تم إرسال الإيصال عبر واتساب': 'Receipt sent via WhatsApp'
+  'تم إرسال الإيصال عبر واتساب': 'Receipt sent via WhatsApp',
+  'معاينة رسالة واتساب': 'WhatsApp message preview',
+  'إلى:': 'To:',
+  'سيُفتح واتساب برسالة جاهزة، اضغط إرسال بعد المعاينة.': 'WhatsApp will open with a ready message — press send after reviewing.',
+  'سيُرسل تلقائياً عبر WhatsApp Cloud API.': 'It will be sent automatically via the WhatsApp Cloud API.',
+  'فتح واتساب': 'Open WhatsApp',
+  'تم إرسال الرسالة عبر واتساب': 'Message sent via WhatsApp'
 };
 
 const I18N = Vue.reactive({ lang: 'ar', en: EN_DICT });

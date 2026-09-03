@@ -586,37 +586,64 @@ app.put('/api/companies/:companyId/whatsapp-settings', windowPerm('settings', 'e
   res.json(whatsappLib.maskConfig(saved));
 });
 
-// إرسال فاتورة / إيصال / كشف حساب عبر واتساب
+// تحويل الطلب إلى رسالة (تُستخدم في المعاينة والإرسال معاً)
 // body: { type: 'invoice', kind, invoiceId } | { type: 'pos', invoiceId, phone? } | { type: 'statement', partyId } | { type: 'custom', phone, text }
+function resolveWaMessage(db, company, b) {
+  b = b || {};
+  let to = '', text = '', party = '';
+  if (b.type === 'invoice') {
+    const m = whatsappLib.invoiceMessage(db, company, Number(b.invoiceId), b.kind || 'sale');
+    to = m.to; text = m.text; party = m.party;
+  } else if (b.type === 'pos') {
+    const m = whatsappLib.posMessage(db, company, Number(b.invoiceId), b.phone);
+    to = m.to; text = m.text; party = m.party;
+  } else if (b.type === 'statement') {
+    const m = whatsappLib.statementMessage(db, company, Number(b.partyId));
+    to = m.to; text = m.text; party = m.party;
+  } else if (b.type === 'custom') {
+    to = b.phone || '';
+    text = String(b.text || '');
+  } else {
+    throw new Error('نوع الإرسال غير معروف');
+  }
+  if (!to) throw new Error('يرجى إدخال رقم الهاتف');
+  if (!String(text).trim()) throw new Error('يرجى إدخال نص الرسالة');
+  return { to, party, text };
+}
+
+// معاينة الرسالة قبل الإرسال (لا ترسل أبداً)
+app.post('/api/companies/:companyId/whatsapp/preview', waPerm, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  try {
+    const m = resolveWaMessage(db, company, req.body);
+    const config = whatsappLib.getConfig(db);
+    const link = whatsappLib.waLink(m.to, m.text);
+    db.close();
+    res.json({
+      to: m.to, party: m.party, text: m.text, link,
+      method: (config.enabled && config.apiToken && config.phoneId) ? 'api' : 'link',
+      api_error: null
+    });
+  } catch (e) {
+    db.close();
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// إرسال فاتورة / إيصال / كشف حساب عبر واتساب
 app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const db = accounting.getDb(company.id);
-  const b = req.body || {};
   try {
+    const m = resolveWaMessage(db, company, req.body);
     const config = whatsappLib.getConfig(db);
-    let to = '', text = '', party = '';
-    if (b.type === 'invoice') {
-      const m = whatsappLib.invoiceMessage(db, company, Number(b.invoiceId), b.kind || 'sale');
-      to = m.to; text = m.text; party = m.party;
-    } else if (b.type === 'pos') {
-      const m = whatsappLib.posMessage(db, company, Number(b.invoiceId), b.phone);
-      to = m.to; text = m.text; party = m.party;
-    } else if (b.type === 'statement') {
-      const m = whatsappLib.statementMessage(db, company, Number(b.partyId));
-      to = m.to; text = m.text; party = m.party;
-    } else if (b.type === 'custom') {
-      to = b.phone || config.number;
-      if (!to) throw new Error('يرجى إدخال رقم الهاتف');
-      text = String(b.text || '');
-      if (!text.trim()) throw new Error('يرجى إدخال نص الرسالة');
-    } else {
-      throw new Error('نوع الإرسال غير معروف');
-    }
-    const link = whatsappLib.waLink(to, text);
-    const sent = config.enabled ? await whatsappLib.send(config, to, text) : { method: 'link' };
+    const link = whatsappLib.waLink(m.to, m.text);
+    const sent = config.enabled ? await whatsappLib.send(config, m.to, m.text) : { method: 'link' };
     db.close();
-    res.json({ to, party, text, link, method: sent.method, sent: sent.sent === true, api_error: sent.api_error || null });
+    res.json({ to: m.to, party: m.party, text: m.text, link, method: sent.method, sent: sent.sent === true, api_error: sent.api_error || null });
   } catch (e) {
     db.close();
     res.status(400).json({ error: e.message });

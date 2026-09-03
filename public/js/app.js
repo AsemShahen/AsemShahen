@@ -247,4 +247,5 @@ const App = {
 const app = createApp(App);
 app.config.globalProperties.t = t;
 app.config.globalProperties.i18n = I18N;
+app.component('wa-preview-modal', WaPreviewModal);
 app.mount('#app');

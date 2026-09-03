@@ -179,6 +179,66 @@ async function loadInfo(company) {
   return await r.json();
 }
 
+const WaPreviewModal = {
+  name: 'WaPreviewModal',
+  props: {
+    preview: { type: Object, default: null },
+    busy: { type: Boolean, default: false }
+  },
+  emits: ['close', 'confirm'],
+  computed: {
+    res() { return this.preview ? this.preview.res : null; }
+  },
+  template: `
+  <div v-if="preview" class="modal-overlay" @click.self="!busy && $emit('close')">
+    <div class="modal" style="max-width:520px;">
+      <h3>{{ t('معاينة رسالة واتساب') }}</h3>
+      <div class="muted mb-2">
+        {{ t('إلى:') }} <strong dir="ltr">{{ res.to }}</strong><template v-if="res.party"> ({{ res.party }})</template>
+      </div>
+      <div class="receipt-box" style="white-space:pre-wrap;text-align:right;direction:rtl;font-size:14px;">{{ res.text }}</div>
+      <p v-if="res.method === 'link'" class="muted" style="font-size:12px;margin-top:6px;">{{ t('سيُفتح واتساب برسالة جاهزة، اضغط إرسال بعد المعاينة.') }}</p>
+      <p v-else class="muted" style="font-size:12px;margin-top:6px;">{{ t('سيُرسل تلقائياً عبر WhatsApp Cloud API.') }}</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" @click="$emit('close')" :disabled="busy">{{ t('إلغاء') }}</button>
+        <button class="btn btn-primary" @click="$emit('confirm')" :disabled="busy">{{ busy ? t('جارٍ الإرسال...') : (res.method === 'api' ? t('إرسال عبر واتساب') : t('فتح واتساب')) }}</button>
+      </div>
+    </div>
+  </div>
+  `
+};
+
+// مزيج معاينة وإرسال الواتساب (معاينة أولاً ثم تأكيد قبل الإرسال / فتح الرابط)
+const WaSendMixin = {
+  data() {
+    return { waPreview: null, waBusy: false };
+  },
+  methods: {
+    async askWhatsApp(payload) {
+      try {
+        const res = await this.api(`/api/companies/${this.company.id}/whatsapp/preview`, { method: 'POST', body: payload });
+        this.waPreview = { payload, res };
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async confirmWhatsApp() {
+      if (!this.waPreview) return;
+      const { payload, res } = this.waPreview;
+      try {
+        if (res.method === 'api') {
+          this.waBusy = true;
+          const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, { method: 'POST', body: payload });
+          if (r.method === 'api' && r.sent) this.toast(t('تم إرسال الرسالة عبر واتساب'));
+          else if (r.link) window.open(r.link, '_blank');
+        } else if (res.link) {
+          window.open(res.link, '_blank');
+        }
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.waBusy = false; }
+      this.waPreview = null;
+    }
+  }
+};
+
 // مكونات مشتركة تُسجل في كل الشاشات
 const CommonMixin = {
   props: {

@@ -629,7 +629,7 @@ const StockCountsView = {
 // ---------- نقطة البيع ----------
 const PosView = {
   name: 'PosView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, WaSendMixin],
   data() {
     return {
       warehouses: [], products: [], methods: [], cart: [], barcodeInput: '', qtyInput: 1,
@@ -768,14 +768,7 @@ const PosView = {
     },
     async sendReceipt() {
       if (!this.receipt) return;
-      try {
-        const r = await this.api(`/api/companies/${this.company.id}/whatsapp/send`, {
-          method: 'POST',
-          body: { type: 'pos', invoiceId: this.receipt.id, phone: this.receipt.phone }
-        });
-        if (r.method === 'api' && r.sent) this.toast(t('تم إرسال الإيصال عبر واتساب'));
-        else window.open(r.link, '_blank');
-      } catch (e) { this.toast(e.message, 'error'); }
+      await this.askWhatsApp({ type: 'pos', invoiceId: this.receipt.id, phone: this.receipt.phone });
     }
   },
   template: `
@@ -879,6 +872,8 @@ const PosView = {
         </div>
       </div>
     </div>
+
+    <wa-preview-modal :preview="waPreview" :busy="waBusy" @close="waPreview = null" @confirm="confirmWhatsApp"></wa-preview-modal>
   </div>
   `
 };
