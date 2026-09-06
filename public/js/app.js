@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { key: 'invoices-purchase', label: 'فواتير الشراء', icon: '📦' },
   { key: 'parties', label: 'العملاء والموردون', icon: '👥' },
   { key: 'closing', label: 'الإقفال السنوي', icon: '🔒' },
+  { key: 'chat', label: 'المحادثة الداخلية', icon: '💬', alwaysShow: true },
   { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
   { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' },
   { key: 'warehouses', label: 'المستودعات', icon: '📦' },
@@ -67,6 +68,7 @@ const App = {
         'invoices-purchase': InvoicesView,
         'parties': PartiesView,
         'closing': ClosingView,
+        'chat': ChatView,
         'settings': SettingsView,
         'users': UsersView,
         'warehouses': WarehousesView,
@@ -100,6 +102,7 @@ const App = {
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
         if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
+        if (i.alwaysShow) return true;
         return can(i.perm || i.key, 'view');
       }).map(i => ({ ...i, label: t(i.label) }));
     },

@@ -15,6 +15,7 @@ const inventoryLib = require('./lib/inventory');
 const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
+const chatLib = require('./lib/chat');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -648,6 +649,302 @@ app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => 
     db.close();
     res.status(400).json({ error: e.message });
   }
+});
+
+// ==================== نظام المحادثة الداخلية ====================
+function chatAccess(req, res, next) {
+  const companyId = Number(req.params.companyId);
+  if (usersLib.userHasCompany(req.user, companyId)) return next();
+  return res.status(403).json({ error: 'ليست لديك صلاحية للوصول إلى محادثات هذه الشركة' });
+}
+
+// فتح قاعدة بيانات الشركة وتسجيل العضو تلقائياً مع إرجاع سياق العمل
+function chatCtx(req, res) {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) { res.status(404).json({ error: 'الشركة غير موجودة' }); return null; }
+  const db = accounting.getDb(company.id);
+  chatLib.ensureMember(db, req.user.id, req.user.username);
+  chatLib.ensureChannels(db);
+  const name = chatLib.memberPublic(db, req.user.id);
+  return {
+    company, db, user: req.user,
+    profile: {
+      id: req.user.id,
+      name: (name && name.display_name) || req.user.username,
+      dept: (name && name.department_name) || ''
+    }
+  };
+}
+
+function closeChatCtx(ctx) { if (ctx && ctx.db) ctx.db.close(); }
+
+// --- مصادقة الأعضاء ---
+function chatMembersList(ctx) {
+  // أعضاء الشركة = كل المستخدمين النشطين الذين لديهم صلاحية على الشركة أو مدير النظام
+  const all = usersLib.listUsers().filter(u => u.is_active && (u.role === 'admin' || usersLib.userHasCompany(u, ctx.company.id)));
+  const ids = all.map(u => u.id);
+  for (const u of all) chatLib.ensureMember(ctx.db, u.id, u.username);
+  const depts = ctx.db.prepare('SELECT * FROM hr_departments ORDER BY name').all();
+  const online = chatLib.onlineUsers(ctx.company.id);
+  const members = chatLib.listMembers(ctx.db, ids).map(m => ({ ...m, online: online.includes(m.user_id) }));
+  return { members, departments: depts, online };
+}
+
+// --- دفق الأحداث اللحظية (SSE) ---
+app.get('/api/companies/:companyId/chat/events', chatAccess, (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  closeChatCtx(ctx);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  chatLib.subscribe(companyId, req.user.id, res);
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) { /* مغلق */ } }, 25000);
+  req.on('close', () => {
+    clearInterval(hb);
+    chatLib.unsubscribe(companyId, req.user.id, res);
+  });
+});
+
+// --- المحادثات الأخيرة ---
+app.get('/api/companies/:companyId/chat/conversations', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try { res.json(chatLib.conversations(ctx.db, req.user.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- قائمة الأعضاء والأقسام ---
+app.get('/api/companies/:companyId/chat/members', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const data = chatMembersList(ctx);
+    data.me = chatLib.memberPublic(ctx.db, req.user.id);
+    data.isAdmin = req.user.role === 'admin';
+    res.json(data);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- تعديل ملف عضو (للمدير العام فقط) ---
+app.put('/api/companies/:companyId/chat/members/:userId', chatAccess, adminOnly, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try { res.json(chatLib.setMember(ctx.db, Number(req.params.userId), req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- قراءة الرسائل ---
+app.post('/api/companies/:companyId/chat/read', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    chatLib.markRead(ctx.db, req.user.id, { channelId: req.body.channelId, peerId: req.body.peerId });
+    res.json({ ok: true });
+  } finally { closeChatCtx(ctx); }
+});
+
+// --- رسائل محادثة ---
+app.get('/api/companies/:companyId/chat/messages', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const list = chatLib.listMessages(ctx.db, req.user.id, {
+      channelId: req.query.channel || null,
+      peerId: req.query.dm !== undefined ? Number(req.query.dm) : undefined,
+      before: req.query.before || null, limit: req.query.limit || 50
+    });
+    res.json(list);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- إرسال رسالة نصية ---
+app.post('/api/companies/:companyId/chat/messages', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  const db = ctx.db;
+  try {
+    const body = req.body || {};
+    const channelId = body.channelId ? Number(body.channelId) : null;
+    const peerId = body.peerId !== undefined && body.peerId !== null ? Number(body.peerId) : undefined;
+    const target = { channelId, peerId };
+    if (!channelId && peerId === undefined) throw new Error('حدد القناة أو المستخدم');
+    if (channelId && !chatLib.getChannel(db, channelId)) throw new Error('القناة غير موجودة');
+    if (peerId !== undefined && Number(peerId) === req.user.id) throw new Error('لا يمكنك مراسلة نفسك');
+    const m = chatLib.sendText(db, { id: req.user.id, name: ctx.profile.name, dept: ctx.profile.dept }, { ...target, body: body.body });
+    if (channelId) chatLib.pushChannel(ctx.company.id, 'message', m);
+    else chatLib.pushDm(ctx.company.id, m.user_a, m.user_b, 'message', m);
+    res.json(m);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- إرسال مرفق (ملف/صورة/صوت/فيديو) بجسم خام ---
+app.post('/api/companies/:companyId/chat/files', chatAccess, (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const target = req.query.target || 'channel';
+  const targetId = req.query.id;
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  const db = ctx.db;
+  if (!targetId) { closeChatCtx(ctx); return res.status(400).json({ error: 'المعرف المطلوب مفقود' }); }
+  const name = chatLib.safeFileName(req.query.name || 'ملف');
+  const mime = String(req.query.mime || 'application/octet-stream').slice(0, 120);
+  const caption = String(req.query.caption || '').slice(0, 2000);
+  const channelId = target === 'channel' ? Number(targetId) : null;
+  const peerId = target === 'dm' ? Number(targetId) : undefined;
+  if (channelId && !chatLib.getChannel(db, channelId)) { closeChatCtx(ctx); return res.status(400).json({ error: 'القناة غير موجودة' }); }
+  if (peerId === req.user.id) { closeChatCtx(ctx); return res.status(400).json({ error: 'لا يمكنك مراسلة نفسك' }); }
+  const chunks = [];
+  let size = 0;
+  req.on('data', c => {
+    size += c.length;
+    if (size > chatLib.MAX_UPLOAD) { req.destroy(); }
+    else chunks.push(c);
+  });
+  req.on('end', () => {
+    try {
+      if (size > chatLib.MAX_UPLOAD) throw new Error('حجم الملف يتجاوز الحد الأقصى (30 ميغابايت)');
+      const m = chatLib.insertFile(db, { id: req.user.id, name: ctx.profile.name, dept: ctx.profile.dept },
+        { channelId, peerId, body: caption, file_name: name, file_size: size, file_mime: mime });
+      chatLib.saveUploadFile(db, companyId, m, Buffer.concat(chunks));
+      const saved = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(m.id);
+      if (channelId) chatLib.pushChannel(companyId, 'message', chatLib.publicMessage(saved));
+      else chatLib.pushDm(companyId, saved.user_a, saved.user_b, 'message', chatLib.publicMessage(saved));
+      res.json(chatLib.publicMessage(saved));
+    } catch (e) { res.status(400).json({ error: e.message }); }
+    finally { closeChatCtx(ctx); }
+  });
+  req.on('error', () => {
+    closeChatCtx(ctx);
+    if (!res.headersSent) res.status(400).json({ error: 'فشل استقبال الملف' });
+  });
+});
+
+// --- تحميل مرفق ---
+app.get('/api/companies/:companyId/chat/files/:messageId', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const m = ctx.db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(Number(req.params.messageId));
+    if (!m) return res.status(404).json({ error: 'الرسالة غير موجودة' });
+    const fp = chatLib.uploadFilePath(ctx.company.id, m);
+    if (!fp || !fs.existsSync(fp)) return res.status(404).json({ error: 'الملف غير موجود' });
+    res.setHeader('Content-Type', m.file_mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(m.file_name)}"`);
+    const st = fs.createReadStream(fp);
+    st.pipe(res);
+    ctx.db.close();
+  } catch (e) {
+    closeChatCtx(ctx);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// --- حذف رسالة (للمدير العام فقط، مع تسجيل) ---
+app.post('/api/companies/:companyId/chat/messages/:messageId/delete', chatAccess, adminOnly, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const m = chatLib.deleteMessage(ctx.db, { id: req.user.id, name: req.user.username }, Number(req.params.messageId));
+    const ev = { id: m.id, channel_id: m.channel_id, user_a: m.user_a, user_b: m.user_b };
+    if (m.channel_id) chatLib.pushChannel(ctx.company.id, 'delete', ev);
+    else chatLib.pushDm(ctx.company.id, m.user_a, m.user_b, 'delete', ev);
+    res.json(m);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- تطهير قناة (للمدير العام فقط، مع تسجيل) ---
+app.post('/api/companies/:companyId/chat/channels/:channelId/purge', chatAccess, adminOnly, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const r = chatLib.purgeChannel(ctx.db, { id: req.user.id, name: req.user.username }, Number(req.params.channelId));
+    chatLib.pushChannel(ctx.company.id, 'purge', { channelId: Number(req.params.channelId) });
+    res.json(r);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// --- مكالمات مباشرة (صوت/فيديو) عبر WebRTC ---
+function callPayload(call, ctx, extra) {
+  const from = ctx.db.prepare('SELECT user_id, display_name FROM chat_members WHERE user_id = ?').get(call.caller_id);
+  const to = ctx.db.prepare('SELECT user_id, display_name FROM chat_members WHERE user_id = ?').get(call.callee_id);
+  return {
+    call: { ...call, caller_name: from ? from.display_name : '', callee_name: to ? to.display_name : '' },
+    ...extra
+  };
+}
+
+app.post('/api/companies/:companyId/chat/calls', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const calleeId = Number((req.body || {}).calleeId);
+    const callType = (req.body || {}).callType === 'video' ? 'video' : 'voice';
+    if (!calleeId) throw new Error('حدد المستخدم المطلوب مكالمته');
+    const result = chatLib.createCall(ctx.db, { id: req.user.id }, calleeId, callType);
+    if (result.busy) return res.status(409).json({ error: 'الطرف الآخر مشغول حالياً' });
+    const data = callPayload(result.call, ctx);
+    chatLib.pushUser(ctx.company.id, calleeId, 'call', data);
+    res.json(data);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+function callUserRoute(status, reason) {
+  return (req, res) => {
+    const ctx = chatCtx(req, res);
+    if (!ctx) return;
+    try {
+      const callId = Number(req.params.callId);
+      const call = ctx.db.prepare('SELECT * FROM chat_calls WHERE id = ?').get(callId);
+      if (!call) throw new Error('المكالمة غير موجودة');
+      if (Number(req.user.id) !== call.caller_id && Number(req.user.id) !== call.callee_id) {
+        return res.status(403).json({ error: 'لست طرفاً في هذه المكالمة' });
+      }
+      const updated = chatLib.updateCallStatus(ctx.db, callId, status, req.user.id, reason);
+      const data = callPayload(updated, ctx);
+      chatLib.pushUser(ctx.company.id, call.caller_id, 'call-' + status, data);
+      chatLib.pushUser(ctx.company.id, call.callee_id, 'call-' + status, data);
+      res.json(data);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+    finally { closeChatCtx(ctx); }
+  };
+}
+app.post('/api/companies/:companyId/chat/calls/:callId/accept', chatAccess, callUserRoute('accepted', ''));
+app.post('/api/companies/:companyId/chat/calls/:callId/reject', chatAccess, callUserRoute('rejected', 'rejected'));
+app.post('/api/companies/:companyId/chat/calls/:callId/end', chatAccess, callUserRoute('ended', 'ended'));
+
+// تمرير إشارات WebRTC بين الطرفين
+app.post('/api/companies/:companyId/chat/calls/:callId/signal', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try {
+    const callId = Number(req.params.callId);
+    const call = ctx.db.prepare('SELECT * FROM chat_calls WHERE id = ?').get(callId);
+    if (!call) throw new Error('المكالمة غير موجودة');
+    const other = Number(req.user.id) === call.caller_id ? call.callee_id : call.caller_id;
+    chatLib.pushUser(ctx.company.id, other, 'call-signal', { callId, data: (req.body || {}).data || null });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { closeChatCtx(ctx); }
+});
+
+// مكالمات نشطة (للاستعادة بعد إعادة التحميل)
+app.get('/api/companies/:companyId/chat/calls/pending', chatAccess, (req, res) => {
+  const ctx = chatCtx(req, res);
+  if (!ctx) return;
+  try { res.json(chatLib.pendingCallsFor(ctx.db, req.user.id).map(c => ({ ...c }))); }
+  finally { closeChatCtx(ctx); }
 });
 
 // ==================== طرق الدفع ====================

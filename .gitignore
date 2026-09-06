@@ -20,3 +20,6 @@ Thumbs.db
 
 # Database backups
 data/backups/
+
+# Chat uploads
+data/uploads/

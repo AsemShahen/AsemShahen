@@ -20,6 +20,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Per-Company User Permissions**: Users can be granted permissions scoped to specific companies and windows.
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
+- **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the system admin only, with every action recorded in the audit log.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
 
 ## Getting Started
@@ -70,6 +71,8 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 | `lib/parties.js` | Customers & suppliers |
 | `lib/inventory.js` | Warehouses, products, stock, counts, POS |
 | `lib/hr.js` | HR: departments, employees, attendance, leaves, payroll |
+| `lib/chat.js` | Internal chat: channels, members, messages, files, calls + audit log |
+| `public/js/views-chat.js` | Internal chat UI (conversation list, threads, voice recorder, calls) |
 | `lib/hospital.js` | Hospital module |
 | `lib/db-tools.js` | DB backup / restore / compress / repair |
 | `lib/zatca/` | ZATCA e-invoicing (QR + XML + signing + submission) |
@@ -78,7 +81,17 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 
 ## UI Overview
 
-All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Employees & Departments, Leaves, Payroll, Fiscal Year Closing, Settings, and Users & Permissions.
+All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Employees & Departments, Leaves, Payroll, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
+
+## Internal Chat
+
+- **Automatic channels**: a general channel for all employees plus one channel per HR department, created automatically.
+- **Direct messaging**: any employee can talk privately to any other employee in the company, with live presence and unread counters.
+- **Rich content**: text messages, instant voice recordings, images, and documents (PDF / Word / Excel / any file up to 30 MB) rendered inline in the conversation.
+- **Direct calls**: peer-to-peer voice and video calls between employees via WebRTC (no media server; signaling goes through the app).
+- **Permanent history**: every message is stored in the company database and is included in backup/restore; employees cannot erase anything.
+- **Admin oversight**: deleting a single message or purging an entire channel is available only to the system admin, and every deletion is written to the audit log inside the company database.
+- **Member management** (admin): assign each employee's department and edit their display name and job title from the conversation list.
 
 ## Settings Tabs
 
