@@ -22,6 +22,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
 - **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the system admin only, with every action recorded in the audit log.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
+- **Fully Responsive**: Mobile-first responsive layout — collapsible sidebar drawer with a hamburger menu, stacked cards/forms, horizontally scrollable tables, bottom-sheet modals, and a dedicated two-pane chat experience on phones.
 
 ## Getting Started
 

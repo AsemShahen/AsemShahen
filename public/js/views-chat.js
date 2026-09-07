@@ -64,7 +64,8 @@ const ChatView = {
       call: null,
       pendingCalls: [],
       memberModal: null,
-      purgeBusy: false, deletingId: null
+      purgeBusy: false, deletingId: null,
+      listPane: true
     };
   },
   computed: {
@@ -200,12 +201,19 @@ const ChatView = {
     // ---------------- فتح المحادثة ----------------
     openChannel(id) {
       this.sel = { channelId: id, peerId: null };
+      this.listPane = false;
       this.loadThread();
     },
     openDm(peerId) {
       if (peerId === this.meId) return;
       this.sel = { channelId: null, peerId };
+      this.listPane = false;
       this.loadThread();
+    },
+    goToList() {
+      this.listPane = true;
+      this.sel = { channelId: null, peerId: null };
+      this.msgs = [];
     },
     async loadThread(before) {
       if (!this.sel.channelId && !this.sel.peerId) return;
@@ -777,7 +785,7 @@ const ChatView = {
     }
   },
   template: `
-  <div class="chat-app" v-cloak>
+  <div class="chat-app" :class="listPane ? 'show-list' : 'show-thread'" v-cloak>
     <div class="chat-side">
       <div class="chat-side-head">
         <strong>{{ t('المحادثة الداخلية') }}</strong>
@@ -832,6 +840,7 @@ const ChatView = {
     <div class="chat-main">
       <template v-if="activeConv">
         <div class="chat-head">
+          <button class="btn btn-sm btn-ghost chat-back" @click="goToList" :title="t('العودة للقائمة')">☰</button>
           <div class="chat-head-txt">
             <strong>{{ activeName }}</strong>
             <div class="chat-head-sub">

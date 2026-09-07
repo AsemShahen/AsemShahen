@@ -318,14 +318,120 @@ table.kv td:first-child { color: var(--text-muted); white-space: nowrap; width: 
   .preview-table tr { page-break-inside: avoid; }
 }
 
+/* ==================== التصميم المتجاوب ==================== */
+.topbar-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.topbar-title h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-toggle { display: none; }
+.sidebar-close { display: none; position: absolute; top: 14px; inset-inline-end: 10px; z-index: 3; color: var(--sidebar-text) !important; border-color: rgba(255,255,255,.25) !important; }
+.sidebar-backdrop { display: none; }
+.chat-back { display: none; }
+
+@media (max-width: 1100px) {
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; inset-inline-start: 0;
+    width: 280px; max-width: 86vw; height: 100%;
+    transform: translateX(115%); transition: transform .25s ease; z-index: 910;
+    box-shadow: 0 0 44px rgba(0,0,0,.28);
+  }
+  html[dir="ltr"] .sidebar { transform: translateX(-115%); }
+  .sidebar.is-open { transform: translateX(0) !important; }
+  .sidebar-toggle { display: inline-flex; }
+  .sidebar-close { display: inline-flex; }
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; background: rgba(15,46,40,.5);
+    z-index: 900; animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .main { width: 100%; }
+  .content { padding: 18px 16px 40px; }
+}
+
 @media (max-width: 900px) {
-  .sidebar { width: 70px; }
-  .sidebar-brand strong, .sidebar-brand small, .nav-item:not(.active) { font-size: 0; }
-  .nav-item span { font-size: 20px; }
-  .sidebar-footer, .company-switch, .fy-badge { display: none; }
+  .chat-app { height: calc(100vh - 96px); }
+  .line-row { min-width: 640px; }
+  .entry-lines { overflow-x: auto; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid label.span2 { grid-column: span 1; }
   .responsive-2 { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 768px) {
+  .topbar { padding: 12px 14px; }
+  .topbar h2 { font-size: 17px; }
+  .topbar-actions .chip { display: none; }
+  .panel-header { flex-wrap: wrap; gap: 8px; }
+  .flex-between { flex-wrap: wrap; }
+  .companies-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .content { padding: 14px 12px 34px; }
+  .pos-products { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .stat-card .icon { font-size: 24px; }
+}
+
+@media (max-width: 640px) {
+  .content { padding: 12px 10px 24px; }
+  .topbar { padding: 10px 12px; }
+  .topbar h2 { font-size: 16px; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .lang-select { padding: 4px 8px; font-size: 12px; }
+  .cards-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .card-sm { padding: 12px; }
+  .stat-card .value { font-size: 20px; }
+  th, td { padding: 8px 9px; font-size: 12.5px; }
+  input, select, textarea { font-size: 16px; }
+  .modal-overlay { padding: 10px; align-items: flex-end; }
+  .modal { max-height: 94vh; border-radius: 16px 16px 0 0; padding: 18px; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions .btn { flex: 1; }
+  .btn-lg { padding: 12px 18px; font-size: 15px; }
+  .entry-grid { grid-template-columns: 1fr; }
+  .barcode-add { flex-wrap: wrap; }
+  .panel-footer { flex-wrap: wrap; }
+  .check-inline { padding-top: 4px; flex-wrap: wrap; }
+  .brand-banner { padding: 34px 14px 28px; }
+  .brand-banner h1 { font-size: 26px; }
+  .brand-logo { font-size: 44px; }
+  .brand-banner p { font-size: 14px; }
+  .company-screen-body { padding: 18px 12px 40px; }
+  .company-card { padding: 16px; }
+  .company-card-meta { flex-direction: column; gap: 4px; }
+  .login-card { padding: 28px 20px; }
+  .login-card h1 { font-size: 22px; }
+  .pos-grid { gap: 10px; }
+  .pos-products { max-height: 46vh; }
+  .bubble-wrap { max-width: 88%; }
+  .bubble-img { max-width: 100%; max-height: 220px; }
+  .bubble-video { max-width: 100%; }
+  .bubble audio { width: 170px; }
+  .chat-msgs { padding: 10px; }
+  .chat-composer { padding: 8px; }
+  .composer-row .btn-send { padding: 8px 14px; font-size: 13px; }
+  .bubble-file { min-width: 150px; }
+  .chat-call-videos { height: 190px; }
+  .call-local-vid { width: 90px; height: 64px; }
+  .call-voice-avatar { font-size: 64px; }
+  .perm-row { min-width: 760px; }
+  .perm-matrix { -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 700px) {
+  .chat-app { height: calc(100vh - 80px); min-height: 380px; }
+  .chat-side { width: 100%; min-width: 100%; }
+  .chat-main { width: 100%; }
+  .chat-app.show-list .chat-main { display: none; }
+  .chat-app.show-thread .chat-side { display: none; }
+  .chat-back { display: inline-flex !important; }
+}
+
+@media (max-width: 480px) {
+  .companies-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .company-card-icon { font-size: 32px; }
+  .company-card-name { font-size: 15px; }
+  .company-card-meta { font-size: 11px; }
+  .chat-head { flex-wrap: wrap; }
+  .chat-head-actions .btn { padding: 5px 9px; }
+  .chat-call-card { border-radius: 16px 16px 0 0; width: 100%; max-width: 100%; }
+  .call-actions { gap: 16px; }
+  .call-btn { width: 52px; height: 52px; font-size: 21px; }
 }
 
 /* ==================== مبدّل اللغة ==================== */

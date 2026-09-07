@@ -45,6 +45,7 @@ const App = {
       activeCompany: null,
       info: { settings: {}, active_fiscal_year: null },
       view: 'dashboard',
+      sidebarOpen: false,
       openCreateCompany: false,
       newCompany: {
         name: '', business_type: 'corporate', cr_number: '', vat_number: '',
@@ -158,13 +159,14 @@ const App = {
       this.view = 'dashboard';
       this.loginForm = { username: '', password: '' };
     },
-    navigate(view) { this.view = view; },
+    navigate(view) { this.view = view; this.sidebarOpen = false; },
+    toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; },
     openPrintPreview,
     closePrintPreview,
     doPrint() {
       setTimeout(() => { try { window.print(); } catch (e) {} }, 100);
     },
-    goDashboard() { this.view = 'dashboard'; },
+    goDashboard() { this.view = 'dashboard'; this.sidebarOpen = false; },
     backToCompanies() {
       this.activeCompany = null;
       setActiveCompanyId(null);

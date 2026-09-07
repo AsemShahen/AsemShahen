@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>نظام المحاسب - برنامج المحاسبة المالي</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=8">
+  <link rel="stylesheet" href="/css/style.css?v=9">
   <script src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
@@ -121,7 +121,9 @@
 
     <!-- ==================== التطبيق الرئيسي ==================== -->
     <div v-else class="app-shell">
-      <aside class="sidebar">
+      <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
+      <aside class="sidebar" :class="{ 'is-open': sidebarOpen }">
+        <button type="button" class="btn btn-sm btn-ghost sidebar-close" @click="sidebarOpen = false" aria-label="إغلاق">✕</button>
         <div class="sidebar-brand" @click="goDashboard">
           <span class="sidebar-logo">📊</span>
           <div>
@@ -149,7 +151,10 @@
 
       <main class="main">
         <header class="topbar">
-          <h2>{{ currentNavLabel }}</h2>
+          <div class="topbar-title">
+            <button type="button" class="btn btn-ghost sidebar-toggle" @click="toggleSidebar" aria-label="القائمة">☰</button>
+            <h2>{{ currentNavLabel }}</h2>
+          </div>
           <div class="topbar-actions">
             <select class="lang-select" v-model="i18n.lang">
               <option value="ar">العربية</option>
@@ -199,18 +204,18 @@
     </template>
   </div>
 
-  <script src="/js/i18n.js?v=15"></script>
-  <script src="/js/views-common.js?v=15"></script>
-  <script src="/js/views-chat.js?v=15"></script>
-  <script src="/js/views-dashboard.js?v=15"></script>
-  <script src="/js/views-accounts.js?v=15"></script>
-  <script src="/js/views-reports.js?v=15"></script>
-  <script src="/js/views-invoices.js?v=15"></script>
-  <script src="/js/views-inventory.js?v=15"></script>
-  <script src="/js/views-hr.js?v=15"></script>
-  <script src="/js/views-closing.js?v=15"></script>
-  <script src="/js/views-users.js?v=15"></script>
-  <script src="/js/views-hospital.js?v=15"></script>
-  <script src="/js/app.js?v=15"></script>
+  <script src="/js/i18n.js?v=16"></script>
+  <script src="/js/views-common.js?v=16"></script>
+  <script src="/js/views-chat.js?v=16"></script>
+  <script src="/js/views-dashboard.js?v=16"></script>
+  <script src="/js/views-accounts.js?v=16"></script>
+  <script src="/js/views-reports.js?v=16"></script>
+  <script src="/js/views-invoices.js?v=16"></script>
+  <script src="/js/views-inventory.js?v=16"></script>
+  <script src="/js/views-hr.js?v=16"></script>
+  <script src="/js/views-closing.js?v=16"></script>
+  <script src="/js/views-users.js?v=16"></script>
+  <script src="/js/views-hospital.js?v=16"></script>
+  <script src="/js/app.js?v=16"></script>
 </body>
 </html>
