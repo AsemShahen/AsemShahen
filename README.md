@@ -120,8 +120,8 @@ Since official GitHub Sponsors is restricted in my region, you can back my proje
 
 If you find my tools helpful, you can send a tip via Crypto:
 
-    **USDT (Network: TRON): TU68gmFAkWzMuqfPeEw3GWWurPa8CcWjG9
-    **Bitcoin : bc1qg2wkx9t6yakskwplds9n8n24mca5ulnaeslznr
+    **USDT (Network: TRON): TG22CyzuFEXZiLm8opU9af1Tnxaomsfgbv
+    **Bitcoin : 13GNUENaevez1q2nWfoJQzHRH6juWsE7zP
 
 ✉️ Contact & Freelancing
 
