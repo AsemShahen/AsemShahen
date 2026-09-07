@@ -180,6 +180,7 @@ const ChatView = {
               peerId: c.caller_id, peerName: (from && from.display_name) || String(c.caller_id),
               started: null, pc: null, local: null
             };
+            this._ringStart('ring');
           } else if (c.status === 'accepted' && !this.call) {
             this.call = {
               id: c.id, type: c.call_type, state: 'active',
@@ -539,6 +540,52 @@ const ChatView = {
       } catch (e) { this.toast(e.message, 'error'); }
     },
     // ---------------- المكالمات ----------------
+    // ---------------- الرنين ----------------
+    _ringStart(kind) {
+      this._ringStop();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        const ctx = new AC();
+        if (ctx.state === 'suspended') {
+          const resume = () => { try { ctx.resume(); } catch (e) { /* تجاهل */ } };
+          document.addEventListener('pointerdown', resume, { once: true });
+        }
+        const master = ctx.createGain();
+        master.gain.value = 0;
+        master.connect(ctx.destination);
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = kind === 'ring' ? 440 : 425;
+        const g = ctx.createGain();
+        g.gain.value = 1;
+        osc.connect(g);
+        g.connect(master);
+        osc.start();
+        const cfg = kind === 'ring'
+          ? { onDur: 0.45, cycle: 1.0 }   // رنين المتلقي
+          : { onDur: 1.0, cycle: 3.0 };   // نغمة الاتصال (رن-خلف)
+        this._ring = { ctx, master, osc, cfg, t0: Date.now(), on: true };
+        this._ringTimer = setInterval(() => this._ringTick(), 100);
+      } catch (e) { this._ring = null; }
+    },
+    _ringTick() {
+      const r = this._ring;
+      if (!r) return;
+      const t = ((Date.now() - r.t0) / 1000) % r.cfg.cycle;
+      const target = t < r.cfg.onDur ? 0.09 : 0;
+      try { r.master.gain.setTargetAtTime(target, r.ctx.currentTime, 0.03); } catch (e) { /* تجاهل */ }
+    },
+    _ringStop() {
+      if (this._ringTimer) { clearInterval(this._ringTimer); this._ringTimer = null; }
+      const r = this._ring;
+      if (!r) return;
+      try {
+        r.master.gain.setTargetAtTime(0, r.ctx.currentTime, 0.02);
+        setTimeout(() => { try { r.osc.stop(); r.ctx.close(); } catch (e) { /* تجاهل */ } }, 120);
+      } catch (e) { /* تجاهل */ }
+      this._ring = null;
+    },
     async startCall(type) {
       const peer = this.activeConv;
       if (!peer || peer.kind !== 'dm' || !peer.peerId || this.call) return;
@@ -553,6 +600,7 @@ const ChatView = {
           id: res.call.id, type: res.call.call_type, state: 'outgoing',
           peerId: peer.peerId, peerName, started: null, pc: null, local: null
         };
+        this._ringStart('ringback');
         this.ensureLocalMedia();
       } catch (e) { this.toast(e.message, 'error'); }
     },
@@ -568,19 +616,32 @@ const ChatView = {
         if (this.call && this.call.local && this.$refs.localVideo) this.$refs.localVideo.srcObject = this.call.local;
       });
     },
-    attachRemoteVideo() {
+    attachRemote() {
       this.$nextTick(() => {
-        if (this.call && this.call.remote && this.$refs.remoteVideo) this.$refs.remoteVideo.srcObject = this.call.remote;
+        if (!this.call || !this.call.remote) return;
+        if (this.call.type === 'video') {
+          if (this.$refs.remoteVideo) this.$refs.remoteVideo.srcObject = this.call.remote;
+        } else if (this.$refs.remoteAudio) {
+          this.$refs.remoteAudio.srcObject = this.call.remote;
+          this.$refs.remoteAudio.play().catch(() => {});
+        }
       });
     },
     createPeer() {
       if (!this.call || this.call.pc) return;
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      if (typeof window === 'undefined' || !window.RTCPeerConnection) return;
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+          { urls: 'stun:stun.stunprotocol.org:3478' },
+          { urls: 'stun:stun.sipgate.net:10000' }
+        ]
+      });
       if (this.call.local) this.call.local.getTracks().forEach(tr => pc.addTrack(tr, this.call.local));
       pc.ontrack = ev => {
         if (!this.call) return;
         this.call.remote = ev.streams[0] || new MediaStream([ev.track]);
-        this.attachRemoteVideo();
+        this.attachRemote();
       };
       pc.onicecandidate = ev => {
         if (ev.candidate && this.call && this.call.id) {
@@ -593,6 +654,19 @@ const ChatView = {
       await this.ensureLocalMedia();
       this.createPeer();
     },
+    // معالجة العرض الوارد: نضمن جاهزية الميكروفون وجهاز WebRTC قبل الرد
+    async handleOffer(c, sig) {
+      try {
+        if (!this.call.local) await this.setupPeerStream();
+        else this.createPeer();
+        const pc = this.call.pc;
+        if (!pc) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await this.signal({ type: 'answer', sdp: answer });
+      } catch (e) { /* تجاهل */ }
+    },
     async signal(payload) {
       if (!this.call || !this.call.id) return;
       await this.api(`/api/companies/${this.company.id}/chat/calls/${this.call.id}/signal`, { method: 'POST', body: { data: payload } });
@@ -600,11 +674,13 @@ const ChatView = {
     async acceptIncomingCall() {
       const c = this.call;
       if (!c || c.state !== 'incoming') return;
+      this._ringStop();
       c.state = 'active';
       c.started = Date.now();
       try {
         await this.api(`/api/companies/${this.company.id}/chat/calls/${c.id}/accept`, { method: 'POST' });
         await this.setupPeerStream();
+        this.attachLocalVideo();
       } catch (e) { this.toast(e.message, 'error'); this.teardownCall(); }
     },
     async rejectIncomingCall() {
@@ -630,15 +706,18 @@ const ChatView = {
             peerId: call.caller_id, peerName: call.caller_name || String(call.caller_id),
             started: null, pc: null, local: null
           };
+          this._ringStart('ring');
         }
         return;
       }
       if (event === 'call-accepted') {
         if (!this.call) return;
         if (Number(call.caller_id) === this.meId) {
+          this._ringStop();
           this.call.state = 'active';
           this.call.started = Number(call.answered_at) || Date.now();
           this.call.peerName = this.call.peerName || call.callee_name || '';
+          this.attachLocalVideo();
           this.setupPeerStream().then(async () => {
             if (!this.call || !this.call.pc) return;
             try {
@@ -655,13 +734,7 @@ const ChatView = {
         if (!c || !data.data) return;
         const sig = data.data;
         if (sig.type === 'offer') {
-          this.createPeer();
-          if (!c.pc) return;
-          c.pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig)).then(async () => {
-            const answer = await c.pc.createAnswer();
-            await c.pc.setLocalDescription(answer);
-            await this.signal({ type: 'answer', sdp: answer });
-          }).catch(() => {});
+          this.handleOffer(c, sig);
         } else if (sig.type === 'answer') {
           if (c.pc && c.pc.remoteDescription) return;
           if (c.pc) c.pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig)).catch(() => {});
@@ -685,6 +758,7 @@ const ChatView = {
     },
     teardownCall() {
       const c = this.call;
+      this._ringStop();
       if (!c) return;
       if (c.pc) { try { c.pc.onicecandidate = null; c.pc.ontrack = null; c.pc.close(); } catch (e) { /* تجاهل */ } }
       if (c.local) c.local.getTracks().forEach(tr => { try { tr.stop(); } catch (e) { /* تجاهل */ } });
@@ -692,6 +766,7 @@ const ChatView = {
     },
     teardown() {
       if (this._abort) { try { this._abort.abort(); } catch (e) { /* تجاهل */ } }
+      this._ringStop();
       clearInterval(this.recTimer);
       if (this.recorder && this.recorder.state !== 'inactive') {
         try { this.recorder.stop(); } catch (e) { /* تجاهل */ }
@@ -868,8 +943,9 @@ const ChatView = {
     <div v-if="call" class="chat-call-ov">
       <div class="chat-call-card">
         <div class="chat-call-videos" v-if="call.state === 'active'">
+          <audio v-if="call.type === 'voice'" ref="remoteAudio" autoplay class="chat-call-audio"></audio>
           <video v-if="call.type === 'video'" ref="remoteVideo" autoplay playsinline class="call-remote-vid"></video>
-          <video ref="localVideo" autoplay playsinline muted class="call-local-vid"></video>
+          <video v-if="call.type === 'video'" ref="localVideo" autoplay playsinline muted class="call-local-vid"></video>
           <div v-if="call.type === 'voice'" class="call-voice-avatar">{{ String(call.peerName || '؟').trim().slice(0,1) }}</div>
         </div>
         <div class="call-status" :class="{ outgoing: call.state === 'outgoing', incoming: call.state === 'incoming' }">
