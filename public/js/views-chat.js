@@ -65,7 +65,11 @@ const ChatView = {
       pendingCalls: [],
       memberModal: null,
       purgeBusy: false, deletingId: null,
-      listPane: true
+      listPane: true,
+      rtcIce: null,
+      connState: 'new',
+      _mediaP: null,
+      _setupChain: null
     };
   },
   computed: {
@@ -155,6 +159,10 @@ const ChatView = {
         this.members = mem.members || [];
         this.departments = mem.departments || [];
         this.convs = convs || [];
+        try {
+          const cfg = await this.api(`/api/companies/${this.company.id}/chat/rtc-config`);
+          if (cfg && Array.isArray(cfg.iceServers) && cfg.iceServers.length) this.rtcIce = cfg.iceServers;
+        } catch (e) { /* تبقى الإعدادات الافتراضية */ }
       } catch (e) { this.toast(e.message, 'error'); }
       finally {
         this.loading = false;
@@ -179,20 +187,28 @@ const ChatView = {
             this.call = {
               id: c.id, type: c.call_type, state: 'incoming',
               peerId: c.caller_id, peerName: (from && from.display_name) || String(c.caller_id),
-              started: null, pc: null, local: null
+              started: null, pc: null, local: null,
+              offerer: false, _icq: [], _restarts: 0
             };
+            this.connState = 'new';
             this._ringStart('ring');
           } else if (c.status === 'accepted' && !this.call) {
+            const amCaller = Number(c.caller_id) === this.meId;
             this.call = {
               id: c.id, type: c.call_type, state: 'active',
-              peerId: Number(c.caller_id) === this.meId ? c.callee_id : c.caller_id,
+              peerId: amCaller ? c.callee_id : c.caller_id,
               peerName: '',
-              started: Number(c.answered_at) || Date.now(), pc: null, local: null
+              started: Number(c.answered_at) || Date.now(), pc: null, local: null,
+              offerer: amCaller, _icq: [], _restarts: 0
             };
-            const who = Number(c.caller_id) === this.meId ? c.callee_id : c.caller_id;
+            const who = amCaller ? c.callee_id : c.caller_id;
             const p = this.members.find(m => m.user_id === who);
             this.call.peerName = (p && p.display_name) || String(who);
-            this.setupPeerStream().catch(() => {});
+            this.connState = 'connecting';
+            this.attachLocalVideo();
+            this.setupPeerStream().then(() => {
+              if (amCaller) return this._sendOffer();
+            }).catch(() => {});
           }
         }
       } catch (e) { /* لا توجد مكالمات */ }
@@ -606,18 +622,29 @@ const ChatView = {
         if (res.busy) throw new Error(t('الطرف الآخر مشغول حالياً'));
         this.call = {
           id: res.call.id, type: res.call.call_type, state: 'outgoing',
-          peerId: peer.peerId, peerName, started: null, pc: null, local: null
+          peerId: peer.peerId, peerName, started: null, pc: null, local: null,
+          offerer: true, _icq: [], _restarts: 0
         };
+        this.connState = 'new';
         this._ringStart('ringback');
         this.ensureLocalMedia();
       } catch (e) { this.toast(e.message, 'error'); }
     },
     async ensureLocalMedia() {
-      if (!this.call || this.call.local) return;
-      try {
-        this.call.local = await navigator.mediaDevices.getUserMedia({ audio: true, video: this.call.type === 'video' });
-        this.attachLocalVideo();
-      } catch (e) { this.toast(t('تعذر الوصول للكاميرا أو الميكروفون'), 'error'); }
+      if (!this.call || this.call.local) return this.call.local;
+      if (this._mediaP) return this._mediaP;
+      this._mediaP = navigator.mediaDevices.getUserMedia({ audio: true, video: this.call.type === 'video' })
+        .then(stream => {
+          if (this.call) this.call.local = stream;
+          else stream.getTracks().forEach(tr => { try { tr.stop(); } catch (e) { /* تجاهل */ } });
+          return stream;
+        })
+        .catch(e => {
+          this.toast(t('تعذر الوصول للكاميرا أو الميكروفون'), 'error');
+          throw e;
+        })
+        .finally(() => { this._mediaP = null; });
+      return this._mediaP;
     },
     attachLocalVideo() {
       this.$nextTick(() => {
@@ -627,24 +654,48 @@ const ChatView = {
     attachRemote() {
       this.$nextTick(() => {
         if (!this.call || !this.call.remote) return;
+        const resume = () => {
+          const a = this.$refs && this.$refs.remoteAudio;
+          const v = this.$refs && this.$refs.remoteVideo;
+          if (a && a.srcObject) { try { a.play(); } catch (e) { /* تجاهل */ } }
+          if (v && v.srcObject) { try { v.play(); } catch (e) { /* تجاهل */ } }
+          document.removeEventListener('pointerdown', resume);
+          document.removeEventListener('keydown', resume);
+        };
         if (this.call.type === 'video') {
-          if (this.$refs.remoteVideo) this.$refs.remoteVideo.srcObject = this.call.remote;
+          if (this.$refs.remoteVideo) {
+            this.$refs.remoteVideo.srcObject = this.call.remote;
+            const p = this.$refs.remoteVideo.play();
+            if (p && p.catch) p.catch(() => {
+              document.addEventListener('pointerdown', resume);
+              document.addEventListener('keydown', resume);
+            });
+          }
         } else if (this.$refs.remoteAudio) {
           this.$refs.remoteAudio.srcObject = this.call.remote;
-          this.$refs.remoteAudio.play().catch(() => {});
+          const p = this.$refs.remoteAudio.play();
+          if (p && p.catch) p.catch(() => {
+            document.addEventListener('pointerdown', resume);
+            document.addEventListener('keydown', resume);
+          });
         }
       });
+    },
+    defaultIceServers() {
+      return [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+        { urls: 'stun:stun.stunprotocol.org:3478' },
+        { urls: 'stun:stun.sipgate.net:10000' }
+      ];
+    },
+    iceServersFor() {
+      if (this.rtcIce && this.rtcIce.length) return this.rtcIce;
+      return this.defaultIceServers();
     },
     createPeer() {
       if (!this.call || this.call.pc) return;
       if (typeof window === 'undefined' || !window.RTCPeerConnection) return;
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-          { urls: 'stun:stun.stunprotocol.org:3478' },
-          { urls: 'stun:stun.sipgate.net:10000' }
-        ]
-      });
+      const pc = new RTCPeerConnection({ iceServers: this.iceServersFor() });
       if (this.call.local) this.call.local.getTracks().forEach(tr => pc.addTrack(tr, this.call.local));
       pc.ontrack = ev => {
         if (!this.call) return;
@@ -656,22 +707,82 @@ const ChatView = {
           this.signal({ type: 'candidate', candidate: ev.candidate }).catch(() => {});
         }
       };
+      pc.oniceconnectionstatechange = () => this._onConnChange(pc);
+      pc.onconnectionstatechange = () => this._onConnChange(pc);
       this.call.pc = pc;
+      this._onConnChange(pc);
     },
-    async setupPeerStream() {
-      await this.ensureLocalMedia();
-      this.createPeer();
+    _onConnChange(pc) {
+      if (!this.call || this.call.pc !== pc) return;
+      const st = pc.iceConnectionState || 'new';
+      if (st === 'connected' || st === 'completed') this.connState = 'connected';
+      else if (st === 'failed') {
+        this.connState = 'failed';
+        this._maybeRestartIce();
+      } else if (st === 'closed') this.connState = 'closed';
+      else if (st === 'disconnected') this.connState = 'disconnected';
+      else this.connState = 'connecting';
+    },
+    async _maybeRestartIce() {
+      const c = this.call;
+      if (!c || !c.state || !c.offerer || !c.pc) return;
+      if (c._restarts >= 2) return;
+      if (c._lastRestart && Date.now() - c._lastRestart < 6000) return;
+      c._restarts++;
+      c._lastRestart = Date.now();
+      this.connState = 'restart';
+      try {
+        if (c.pc.restartIce) c.pc.restartIce();
+        const offer = await c.pc.createOffer();
+        await c.pc.setLocalDescription(offer);
+        await this.signal({ type: 'offer', sdp: offer });
+      } catch (e) { /* تجاهل */ }
+    },
+    _queueIce(candidate) {
+      if (!this.call) return;
+      if (!this.call._icq) this.call._icq = [];
+      this.call._icq.push(candidate);
+    },
+    _flushIce() {
+      const c = this.call;
+      if (!c || !c.pc || !c.pc.remoteDescription || !c.pc.localDescription) return;
+      const q = c._icq || [];
+      c._icq = [];
+      for (const cand of q) {
+        try { c.pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {}); } catch (e) { /* تجاهل */ }
+      }
+    },
+    _addRemoteIce(candidate) {
+      const c = this.call;
+      if (!c) return;
+      if (!c.pc || !c.pc.remoteDescription) { this._queueIce(candidate); return; }
+      try { c.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {}); } catch (e) { /* تجاهل */ }
+    },
+    // إنشاء الاتصال بطريقة آمنة من الاستدعاءات المتزامنة
+    setupPeerStream() {
+      if (!this.call) return Promise.resolve();
+      if (!this._setupChain) {
+        this._setupChain = (async () => {
+          await this.ensureLocalMedia();
+          if (!this.call) return;
+          this.createPeer();
+          this.attachLocalVideo();
+          this._flushIce();
+        })().finally(() => { this._setupChain = null; });
+      }
+      return this._setupChain;
     },
     // معالجة العرض الوارد: نضمن جاهزية الميكروفون وجهاز WebRTC قبل الرد
     async handleOffer(c, sig) {
       try {
-        if (!this.call.local) await this.setupPeerStream();
-        else this.createPeer();
-        const pc = this.call.pc;
+        await this.setupPeerStream();
+        const pc = this.call && this.call.pc;
         if (!pc) return;
         await pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig));
+        this._flushIce();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        this._flushIce();
         await this.signal({ type: 'answer', sdp: answer });
       } catch (e) { /* تجاهل */ }
     },
@@ -685,10 +796,10 @@ const ChatView = {
       this._ringStop();
       c.state = 'active';
       c.started = Date.now();
+      this.connState = 'connecting';
       try {
         await this.api(`/api/companies/${this.company.id}/chat/calls/${c.id}/accept`, { method: 'POST' });
         await this.setupPeerStream();
-        this.attachLocalVideo();
       } catch (e) { this.toast(e.message, 'error'); this.teardownCall(); }
     },
     async rejectIncomingCall() {
@@ -705,6 +816,25 @@ const ChatView = {
       this.teardownCall();
     },
     onCallEvent(event, data) {
+      // إشارات WebRTC تأتي بصيغة { callId, data } دون حقل call — تُعالج أولاً
+      if (event === 'call-signal') {
+        const c = this.call;
+        if (!c || !data || !data.data) return;
+        if (data.callId && c.id !== Number(data.callId)) return;
+        const sig = data.data;
+        if (sig && sig.type === 'offer') {
+          this.handleOffer(c, sig);
+        } else if (sig && sig.type === 'answer') {
+          if (c.pc) {
+            c.pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig))
+              .then(() => { this._flushIce(); })
+              .catch(() => {});
+          }
+        } else if (sig && sig.type === 'candidate') {
+          this._addRemoteIce(sig.candidate);
+        }
+        return;
+      }
       const call = data && data.call;
       if (!call) return;
       if (event === 'call') {
@@ -712,42 +842,26 @@ const ChatView = {
           this.call = {
             id: call.id, type: call.call_type, state: 'incoming',
             peerId: call.caller_id, peerName: call.caller_name || String(call.caller_id),
-            started: null, pc: null, local: null
+            started: null, pc: null, local: null,
+            offerer: false, _icq: [], _restarts: 0
           };
+          this.connState = 'new';
           this._ringStart('ring');
         }
         return;
       }
       if (event === 'call-accepted') {
-        if (!this.call) return;
+        if (!this.call || this.call.id !== Number(call.id)) return;
         if (Number(call.caller_id) === this.meId) {
           this._ringStop();
-          this.call.state = 'active';
-          this.call.started = Number(call.answered_at) || Date.now();
-          this.call.peerName = this.call.peerName || call.callee_name || '';
+          if (this.call.state === 'outgoing') {
+            this.call.state = 'active';
+            this.call.started = Number(call.answered_at) || Date.now();
+            this.call.peerName = this.call.peerName || call.callee_name || '';
+          }
+          this.connState = 'connecting';
           this.attachLocalVideo();
-          this.setupPeerStream().then(async () => {
-            if (!this.call || !this.call.pc) return;
-            try {
-              const offer = await this.call.pc.createOffer();
-              await this.call.pc.setLocalDescription(offer);
-              await this.signal({ type: 'offer', sdp: offer });
-            } catch (e) { /* تجاهل */ }
-          }).catch(() => {});
-        }
-        return;
-      }
-      if (event === 'call-signal') {
-        const c = this.call;
-        if (!c || !data.data) return;
-        const sig = data.data;
-        if (sig.type === 'offer') {
-          this.handleOffer(c, sig);
-        } else if (sig.type === 'answer') {
-          if (c.pc && c.pc.remoteDescription) return;
-          if (c.pc) c.pc.setRemoteDescription(new RTCSessionDescription(sig.sdp || sig)).catch(() => {});
-        } else if (sig.type === 'candidate' && c.pc) {
-          c.pc.addIceCandidate(new RTCIceCandidate(sig.candidate)).catch(() => {});
+          this.setupPeerStream().then(() => this._sendOffer()).catch(() => {});
         }
         return;
       }
@@ -764,11 +878,22 @@ const ChatView = {
         if (this.call) this.teardownCall();
       }
     },
+    async _sendOffer() {
+      const c = this.call;
+      if (!c || !c.pc || !c.offerer) return;
+      try {
+        const offer = await c.pc.createOffer();
+        await c.pc.setLocalDescription(offer);
+        this._flushIce();
+        await this.signal({ type: 'offer', sdp: offer });
+      } catch (e) { /* تجاهل */ }
+    },
     teardownCall() {
       const c = this.call;
       this._ringStop();
+      this.connState = 'new';
       if (!c) return;
-      if (c.pc) { try { c.pc.onicecandidate = null; c.pc.ontrack = null; c.pc.close(); } catch (e) { /* تجاهل */ } }
+      if (c.pc) { try { c.pc.onicecandidate = null; c.pc.ontrack = null; c.pc.oniceconnectionstatechange = null; c.pc.onconnectionstatechange = null; c.pc.close(); } catch (e) { /* تجاهل */ } }
       if (c.local) c.local.getTracks().forEach(tr => { try { tr.stop(); } catch (e) { /* تجاهل */ } });
       this.call = null;
     },
@@ -960,7 +1085,11 @@ const ChatView = {
         <div class="call-status" :class="{ outgoing: call.state === 'outgoing', incoming: call.state === 'incoming' }">
           <template v-if="call.state === 'incoming'"><span class="call-pulse"></span>{{ t('مكالمة واردة') }}</template>
           <template v-else-if="call.state === 'outgoing'"><span class="call-pulse"></span>{{ t('جارٍ الاتصال...') }}</template>
-          <template v-else><span class="call-live"></span>{{ t('متصل') }} · {{ callDur }}</template>
+          <template v-else-if="connState === 'connected'"><span class="call-live"></span>{{ t('متصل') }} · {{ callDur }}</template>
+          <template v-else-if="connState === 'failed'"><span class="call-pulse" style="background:#e0443c;"></span>{{ t('تعذر الاتصال المباشر بين الجهازين — تحقق من الإنترنت ثم حاول مرة أخرى') }}</template>
+          <template v-else-if="connState === 'disconnected'"><span class="call-pulse" style="background:#e0443c;"></span>{{ t('انقطع الاتصال — جارٍ إعادة المحاولة...') }}</template>
+          <template v-else-if="connState === 'restart'"><span class="call-pulse" style="background:#ffc24b;"></span>{{ t('جارٍ إعادة إنشاء الاتصال...') }}</template>
+          <template v-else><span class="call-pulse"></span>{{ t('جارٍ إنشاء الاتصال الآمن...') }}</template>
         </div>
         <div class="call-peer">
           <div class="call-peer-avatar">{{ String(call.peerName || '؟').trim().slice(0,1) }}</div>

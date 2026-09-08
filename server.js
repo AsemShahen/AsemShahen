@@ -947,6 +947,31 @@ app.get('/api/companies/:companyId/chat/calls/pending', chatAccess, (req, res) =
   finally { closeChatCtx(ctx); }
 });
 
+// إعدادات WebRTC (STUN/TURN) — يمكن تخصيص TURN عبر متغيرات البيئة
+function rtcIceServers() {
+  try {
+    if (process.env.RTC_ICE_JSON) {
+      const arr = JSON.parse(process.env.RTC_ICE_JSON);
+      if (Array.isArray(arr) && arr.length) return arr;
+    }
+  } catch (e) { /* تجاهل الصيغة غير الصالحة */ }
+  const servers = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: 'stun:stun.stunprotocol.org:3478' },
+    { urls: 'stun:stun.sipgate.net:10000' }
+  ];
+  if (process.env.RTC_TURN_URL) {
+    const turn = { urls: process.env.RTC_TURN_URL };
+    if (process.env.RTC_TURN_USERNAME) turn.username = process.env.RTC_TURN_USERNAME;
+    if (process.env.RTC_TURN_CREDENTIAL) turn.credential = process.env.RTC_TURN_CREDENTIAL;
+    servers.push(turn);
+  }
+  return servers;
+}
+app.get('/api/companies/:companyId/chat/rtc-config', chatAccess, (req, res) => {
+  res.json({ iceServers: rtcIceServers() });
+});
+
 // ==================== طرق الدفع ====================
 app.get('/api/companies/:companyId/payment-methods', (req, res) => {
   const company = getCompany(Number(req.params.companyId));
