@@ -1,28 +1,26 @@
 'use strict';
 
-// ==================== المستخدمون والصلاحيات ====================
+// ==================== المستخدمون والصلاحيات (داخل الشركة فقط) ====================
 const UsersView = {
   name: 'UsersView',
   mixins: [CommonMixin],
   data() {
     return {
-      users: [], windows: [], actions: [], companies: [],
+      users: [], windows: [], actions: [],
       loading: true, alert: null,
       showModal: false, editing: null, saving: false, deleting: null,
-      permCompany: '', form: {}
+      form: {}
     };
   },
   async created() {
     try {
-      const [users, model, companies] = await Promise.all([
-        this.api(`/api/users`),
-        this.api(`/api/permission-model`),
-        this.api(`/api/companies`)
+      const [users, model] = await Promise.all([
+        this.api(`/api/companies/${this.company.id}/users`),
+        this.api(`/api/companies/${this.company.id}/permission-model`)
       ]);
       this.users = users;
       this.windows = model.windows || [];
       this.actions = model.actions || [];
-      this.companies = companies.companies || [];
     } catch (e) { this.toast(e.message, 'error'); }
     finally { this.loading = false; }
   },
@@ -41,10 +39,13 @@ const UsersView = {
       }
       return m;
     },
-    matrixFrom(u, cid) {
-      const p = (u && u.permissions) || {};
-      const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
-      const src = scoped ? (p[String(cid)] || {}) : p;
+    flatSource(p) {
+      const src = (p && typeof p === 'object') ? p : {};
+      const scoped = Object.keys(src).some(k => /^\d+$/.test(k));
+      return scoped ? (src[String(this.company.id)] || {}) : src;
+    },
+    matrixFrom(u) {
+      const src = this.flatSource(u && u.permissions);
       const m = {};
       for (const w of this.windows) {
         m[w.key] = {};
@@ -52,26 +53,17 @@ const UsersView = {
       }
       return m;
     },
-    ensureMatrix(cid) {
-      if (cid && !this.form.permissions[cid]) this.form.permissions[cid] = this.emptyMatrix();
-    },
     openCreate() {
       this.editing = null;
-      this.permCompany = this.companies.length ? String(this.companies[0].id) : '';
-      this.form = { username: '', password: '', role: 'user', is_active: true, permissions: {} };
-      this.ensureMatrix(this.permCompany);
+      this.form = { username: '', password: '', role: 'user', is_active: true, permissions: this.emptyMatrix() };
       this.showModal = true;
     },
     openEdit(u) {
       this.editing = u;
-      const scoped = Object.keys((u.permissions || {})).some(k => /^\d+$/.test(k));
-      const firstWith = scoped ? this.companies.find(c => u.permissions[String(c.id)] && Object.keys(u.permissions[String(c.id)]).some(w => Object.keys(u.permissions[String(c.id)][w] || {}).some(a => u.permissions[String(c.id)][w][a]))) : null;
-      this.permCompany = firstWith ? String(firstWith.id) : (this.companies.length ? String(this.companies[0].id) : '');
       this.form = {
-        username: u.username, password: '', role: u.role, is_active: !!u.is_active, permissions: {}
+        username: u.username, password: '', role: u.role, is_active: !!u.is_active,
+        permissions: this.matrixFrom(u)
       };
-      for (const c of this.companies) this.form.permissions[String(c.id)] = this.matrixFrom(u, c.id);
-      this.ensureMatrix(this.permCompany);
       this.showModal = true;
     },
     async save() {
@@ -85,10 +77,10 @@ const UsersView = {
         };
         if (this.form.password) body.password = this.form.password;
         if (this.editing) {
-          await this.api(`/api/users/${this.editing.id}`, { method: 'PUT', body });
+          await this.api(`/api/companies/${this.company.id}/users/${this.editing.id}`, { method: 'PUT', body });
           this.toast(t('تم تحديث المستخدم والصلاحيات'));
         } else {
-          await this.api(`/api/users`, { method: 'POST', body });
+          await this.api(`/api/companies/${this.company.id}/users`, { method: 'POST', body });
           this.toast(t('تم إنشاء المستخدم'));
         }
         this.showModal = false;
@@ -97,51 +89,29 @@ const UsersView = {
       finally { this.saving = false; }
     },
     async load() {
-      try { this.users = await this.api(`/api/users`); }
+      try { this.users = await this.api(`/api/companies/${this.company.id}/users`); }
       catch (e) { this.toast(e.message, 'error'); }
     },
     confirmDelete(u) { this.deleting = u; },
     async doDelete() {
       try {
-        await this.api(`/api/users/${this.deleting.id}`, { method: 'DELETE' });
+        await this.api(`/api/companies/${this.company.id}/users/${this.deleting.id}`, { method: 'DELETE' });
         this.toast(t('تم حذف المستخدم'));
         this.deleting = null;
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
     },
     setAll(v) {
-      const m = this.form.permissions[this.permCompany];
+      const m = this.form.permissions;
       if (!m) return;
       for (const w of this.windows) for (const a of this.actions) m[w.key][a.key] = v;
     },
-    copyToAll() {
-      if (!this.permCompany) return;
-      const src = this.form.permissions[this.permCompany];
-      if (!src) return;
-      for (const c of this.companies) {
-        const m = this.emptyMatrix();
-        for (const w of this.windows) for (const a of this.actions) m[w.key][a.key] = !!(src[w.key] && src[w.key][a.key]);
-        this.form.permissions[String(c.id)] = m;
-      }
-      this.toast(t('تم نسخ الصلاحيات إلى كل الشركات'));
-    },
     grantedCount(u) {
       if (u.role === 'admin') return t('الكل');
-      const p = u.permissions || {};
-      const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
+      const src = this.flatSource(u.permissions);
       let n = 0;
-      if (scoped) {
-        for (const cid of Object.keys(p)) for (const w of Object.keys(p[cid] || {})) for (const a of Object.keys(p[cid][w] || {})) if (p[cid][w][a]) n++;
-      } else {
-        for (const w of this.windows) for (const a of this.actions) if (p[w] && p[w][a]) n++;
-      }
+      for (const w of this.windows) for (const a of this.actions) if (src[w] && src[w][a]) n++;
       return n;
-    },
-    grantedCompanies(u) {
-      if (u.role === 'admin') return t('الكل');
-      const p = u.permissions || {};
-      if (!Object.keys(p).some(k => /^\d+$/.test(k))) return t('الكل');
-      return Object.keys(p).filter(cid => Object.keys(p[cid] || {}).some(w => Object.keys(p[cid][w] || {}).some(a => p[cid][w][a]))).length;
     }
   },
   template: `
@@ -149,34 +119,33 @@ const UsersView = {
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
 
     <div class="flex-between flex-wrap mb-2">
-      <p class="muted">{{ t('عدد المستخدمين: {n}', { n: users.length }) }}</p>
+      <p class="muted">{{ t('عدد مستخدمي هذه الشركة: {n}', { n: users.length }) }}</p>
       <button class="btn btn-primary" @click="openCreate">+ {{ t('مستخدم جديد') }}</button>
     </div>
 
     <div class="panel">
-      <div class="panel-header"><h3>{{ t('المستخدمون والصلاحيات') }}</h3></div>
+      <div class="panel-header"><h3>{{ t('مستخدمون وصلاحيات {company}', { company: company.name }) }}</h3></div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('الشركات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
+              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
                 <td><strong dir="ltr" style="display:inline-block;text-align:right;">{{ u.username }}</strong>
                   <span v-if="u.id === currentUserId" class="badge green" style="margin-right:6px;">{{ t('أنا') }}</span>
                 </td>
-                <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? t('مدير') : t('مستخدم') }}</span></td>
+                <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? t('مدير الشركة') : t('مستخدم') }}</span></td>
                 <td><span class="badge" :class="u.is_active ? 'green' : 'red'">{{ u.is_active ? t('نشط') : t('موقوف') }}</span></td>
                 <td>{{ grantedCount(u) }}</td>
-                <td>{{ grantedCompanies(u) }}</td>
                 <td class="monospace">{{ u.created_at ? u.created_at.slice(0, 10) : '—' }}</td>
                 <td>
                   <button class="btn btn-sm btn-ghost" @click="openEdit(u)">{{ t('تعديل') }}</button>
                   <button class="btn btn-sm btn-danger" @click="confirmDelete(u)" v-if="u.id !== currentUserId">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!users.length"><td colspan="7" class="muted">{{ t('لا يوجد مستخدمون') }}</td></tr>
+              <tr v-if="!users.length"><td colspan="6" class="muted">{{ t('لا يوجد مستخدمون في هذه الشركة') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -196,7 +165,7 @@ const UsersView = {
           <label>{{ t('الدور') }}
             <select v-model="form.role">
               <option value="user">{{ t('مستخدم') }}</option>
-              <option value="admin">{{ t('مدير') }}</option>
+              <option value="admin">{{ t('مدير الشركة') }}</option>
             </select>
           </label>
           <label class="flex" style="flex-direction:row;align-items:center;gap:8px;">
@@ -206,27 +175,17 @@ const UsersView = {
 
         <div class="mt-3">
           <div class="alert info" v-if="form.role === 'admin'">
-            {{ t('مستخدم بصلاحية مدير يملك تلقائياً جميع الصلاحيات في جميع الشركات والنوافذ، ولا حاجة لتحديد صلاحيات فردية.') }}
+            {{ t('مدير الشركة يملك كل الصلاحيات داخل هذه الشركة فقط ولا يمكنه الوصول إلى أي شركة أخرى.') }}
           </div>
-
           <template v-else>
             <div class="flex-between flex-wrap" style="margin-bottom:8px;">
-              <label class="perm-company">
-                {{ t('الشركة:') }}
-                <select v-model="permCompany" style="min-width:260px;">
-                  <option v-for="c in companies" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
-                </select>
-              </label>
+              <span class="muted">{{ t('الصلاحيات داخل هذه الشركة') }}</span>
               <div class="flex">
                 <button class="btn btn-sm btn-ghost" @click="setAll(true)">{{ t('تحديد الكل') }}</button>
                 <button class="btn btn-sm btn-ghost" @click="setAll(false)">{{ t('مسح الكل') }}</button>
-                <button class="btn btn-sm btn-ghost" @click="copyToAll" :disabled="!permCompany">{{ t('نسخ إلى كل الشركات') }}</button>
               </div>
             </div>
-
-            <p class="muted mb-2" v-if="!companies.length">{{ t('لا توجد شركات بعد.') }}</p>
-
-            <div class="perm-matrix" v-if="permCompany && form.permissions[permCompany]">
+            <div class="perm-matrix">
               <div class="perm-row perm-head">
                 <span class="perm-window">{{ t('النافذة') }}</span>
                 <span v-for="a in actions" :key="a.key" class="perm-cell">{{ t(a.label) }}</span>
@@ -234,7 +193,7 @@ const UsersView = {
               <div class="perm-row" v-for="w in windows" :key="w.key">
                 <span class="perm-window">{{ t(w.label) }}</span>
                 <span v-for="a in actions" :key="a.key" class="perm-cell">
-                  <input type="checkbox" v-model="form.permissions[permCompany][w.key][a.key]">
+                  <input type="checkbox" v-model="form.permissions[w.key][a.key]">
                 </span>
               </div>
             </div>
@@ -253,7 +212,7 @@ const UsersView = {
     <div v-if="deleting" class="modal-overlay" @click.self="deleting = null">
       <div class="modal" style="max-width:440px;border-top:4px solid var(--danger);">
         <h3>{{ t('تأكيد حذف المستخدم') }}</h3>
-        <p>{{ t('هل أنت متأكد من حذف المستخدم {name}؟ سيتم إنهاء جميع جلساته.', { name: deleting.username }) }}</p>
+        <p>{{ t('هل أنت متأكد من حذف المستخدم {name} من هذه الشركة؟ سيتم إنهاء جميع جلساته.', { name: deleting.username }) }}</p>
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="deleting = null">{{ t('تراجع') }}</button>
           <button class="btn btn-danger" @click="doDelete">{{ t('نعم، حذف') }}</button>

@@ -495,7 +495,7 @@ const SettingsView = {
     </template>
 
     <template v-if="tab === 'db'">
-      <div v-if="!isAdmin" class="alert info">{{ t('إدارة قواعد البيانات متاحة لمدير النظام فقط') }}</div>
+      <div v-if="!isAdmin" class="alert info">{{ t('إدارة قواعد البيانات متاحة لمدير الشركة فقط') }}</div>
       <template v-else>
         <div class="flex flex-wrap" style="gap:8px;margin-bottom:12px;">
           <button class="btn btn-primary" @click="createBackup" :disabled="dbBusy">💾 {{ t('إنشاء نسخة احتياطية الآن') }}</button>

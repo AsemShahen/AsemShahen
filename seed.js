@@ -18,7 +18,8 @@ const hospitalLib = require('./lib/hospital');
 const inventory = require('./lib/inventory');
 const hrLib = require('./lib/hr');
 
-// إنشاء حساب المدير الافتراضي: admin / admin123
+// إنشاء مدير المنصة الافتراضي عند التنصيب: admin / admin123
+// (دوره: إنشاء الشركات وتعيين مدرائها والتدقيق في بياناتها — بلا وصول تعديلي للشركات)
 usersLib.ensureDefaultAdmin();
 
 // بيانات الموارد البشرية التجريبية لكل نوع نشاط
@@ -104,7 +105,15 @@ function seedCompany(data, setup) {
   const inv = (opts) => invoicesLib.createInvoice(db, { ...opts, company });
   setup(db, year, inv);
   db.close();
+  // مدير خاص لكل شركة: نفس الاسم admin / admin123 (حساب كل شركة مرتبط بها فقط)
+  try {
+    usersLib.createUser({ username: 'admin', password: 'admin123', role: 'admin', company_id: company.id });
+    console.log(`  └ مدير الشركة: admin / admin123 (اختر الشركة "${company.name}" عند الدخول)`);
+  } catch (e) {
+    console.log(`  • مستخدم المدير للشركة ${company.id}: ${e.message}`);
+  }
   console.log(`✓ ${company.name} (${data.business_type})`);
+  return company;
 }
 
 // ============ شركة استشارات ============
@@ -380,28 +389,26 @@ seedCompany({
 console.log('تم إنشاء البيانات التجريبية بنجاح.');
 
 // ============ مستخدم تجريبي بصلاحيات مقيدة بشركة سوبر ماركت (رقم 2) ============
-// كلمة المرور: cashier123 — صلاحياته محصورة في الشركة رقم 2 فقط
+// كلمة المرور: cashier123 — حساب مرتبط بالشركة 2 فقط، بصلاحيات داخل هذه الشركة وحدها
 {
   const win = (view, extra) => {
     const acts = { view: true, add: true, edit: true, search: true };
     return { ...acts, ...(extra || {}) };
   };
   const company2Perms = {
-    '2': {
-      'dashboard': win('dashboard'),
-      'invoices-sale': win('invoices-sale', { print: true, print_preview: true }),
-      'invoices-purchase': win('invoices-purchase'),
-      'pos': win('pos', { print: true, print_preview: true }),
-      'parties': win('parties'),
-      'products': win('products'),
-      'warehouses': win('warehouses'),
-      'inventory': win('inventory'),
-      'vat': { view: true, search: true }
-    }
+    'dashboard': win('dashboard'),
+    'invoices-sale': win('invoices-sale', { print: true, print_preview: true }),
+    'invoices-purchase': win('invoices-purchase'),
+    'pos': win('pos', { print: true, print_preview: true }),
+    'parties': win('parties'),
+    'products': win('products'),
+    'warehouses': win('warehouses'),
+    'inventory': win('inventory'),
+    'vat': { view: true, search: true }
   };
   try {
-    usersLib.createUser({ username: 'cashier', password: 'cashier123', role: 'user', is_active: true, permissions: company2Perms });
-    console.log('✓ مستخدم تجريبي cashier / cashier123 (صلاحياته على سوبر ماركت الخير فقط)');
+    usersLib.createUser({ username: 'cashier', password: 'cashier123', role: 'user', is_active: true, company_id: 2, permissions: company2Perms });
+    console.log('✓ مستخدم تجريبي cashier / cashier123 (حساب مرتبط بسوبر ماركت الخير — الشركة 2 فقط)');
   } catch (e) {
     console.log(`• المستخدم التجريبي cashier: ${e.message}`);
   }

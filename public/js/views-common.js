@@ -88,18 +88,24 @@ function setAuthUser(u) { _authUser = u; }
 function getAuthUser() { return _authUser; }
 function setActiveCompanyId(id) { _activeCompanyId = id; }
 
+// إجراءات القراءة المسموحة لمدير المنصة أثناء التدقيق
+const PLATFORM_READONLY = ['view', 'search', 'print_preview', 'print', 'export'];
+
+function isPlatformUser(u) { return !!(u && u.role === 'platform'); }
+
+function isCompanyAdminUser(u, companyId) {
+  return !!(u && u.role === 'admin' && u.company_id != null && Number(u.company_id) === Number(companyId));
+}
+
 function can(windowKey, action, companyId) {
   const u = getAuthUser();
   if (!u) return false;
+  const cid = companyId !== undefined ? companyId : _activeCompanyId;
+  if (isPlatformUser(u)) return PLATFORM_READONLY.includes(action);
+  // حساب الشركة لا يملك أي صلاحية خارج شركته
+  if (u.company_id != null && Number(u.company_id) !== Number(cid)) return false;
   if (u.role === 'admin') return true;
   const p = u.permissions || {};
-  const scoped = Object.keys(p).some(k => /^\d+$/.test(k));
-  const cid = companyId !== undefined ? companyId : _activeCompanyId;
-  if (scoped) {
-    const cp = p[String(cid)];
-    return !!(cp && cp[windowKey] && cp[windowKey][action]);
-  }
-  // صلاحيات قديمة (غير مقيدة بشركة) تنطبق على كل الشركات
   return !!(p[windowKey] && p[windowKey][action]);
 }
 

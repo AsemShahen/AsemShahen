@@ -1020,7 +1020,7 @@ const ChatView = {
                 </div>
                 <div class="bubble-foot">
                   <span class="bubble-time">{{ fmtTime(m.created_at) }}</span>
-                  <span v-if="canDelete(m)" class="bubble-del" @click="deleteMsg(m)" :title="t('حذف (مدير النظام)')">🗑</span>
+                  <span v-if="canDelete(m)" class="bubble-del" @click="deleteMsg(m)" :title="t('حذف (مدير الشركة)')">🗑</span>
                 </div>
               </div>
             </div>

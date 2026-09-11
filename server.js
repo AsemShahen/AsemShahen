@@ -31,7 +31,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- المصادقة (بوابة الدخول) ----------
 app.use('/api', (req, res, next) => {
-  if (req.path === '/login' || req.path === '/health') return next();
+  if (req.path === '/login' || req.path === '/health' || req.path === '/companies-meta') return next();
   const token = String(req.headers['x-auth-token'] || req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const user = usersLib.getSessionUser(token);
   if (!user) return res.status(401).json({ error: 'الرجاء تسجيل الدخول' });
@@ -49,10 +49,26 @@ function windowPerm(windowKey, action = 'view') {
   };
 }
 
-function adminOnly(req, res, next) {
-  if (req.user && req.user.role === 'admin') return next();
-  return res.status(403).json({ error: 'هذه العملية متاحة لمدير النظام فقط' });
+// مدير المنصة فقط (إدارة الشركات على مستوى المنصة)
+function platformOnly(req, res, next) {
+  if (req.user && usersLib.isPlatform(req.user)) return next();
+  return res.status(403).json({ error: 'هذه العملية متاحة لمدير المنصة فقط' });
 }
+
+// مدير الشركة المعنية فقط (بدون مدير المنصة)
+function companyAdminOnly(req, res, next) {
+  const companyId = Number(req.params.companyId);
+  if (req.user && usersLib.isCompanyAdmin(req.user, companyId)) return next();
+  return res.status(403).json({ error: 'هذه العملية متاحة لمدير الشركة فقط' });
+}
+
+// حارس العزل: يمنع أي حساب من الاقتراب من شركة غير شركته (مع استثناء تدقيق مدير المنصة)
+app.use('/api/companies/:companyId', (req, res, next) => {
+  const companyId = Number(req.params.companyId);
+  if (!companyId) return next();
+  if (req.user && usersLib.canAccessCompany(req.user, companyId)) return next();
+  return res.status(403).json({ error: 'ليست لديك صلاحية لهذه الشركة' });
+});
 
 function invoiceWindow(kind) {
   return kind === 'purchase' ? 'invoices-purchase' : 'invoices-sale';
@@ -67,7 +83,11 @@ function invPerm(action) {
 
 // ---------- المصادقة: دخول وخروج وتفاصيل المستخدم ----------
 app.post('/api/login', (req, res) => {
-  const user = usersLib.authenticate(req.body && req.body.username, req.body && req.body.password);
+  const user = usersLib.authenticate(
+    req.body && req.body.username,
+    req.body && req.body.password,
+    req.body && req.body.companyId
+  );
   if (!user) return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   const token = usersLib.createSession(user.id);
   res.json({ token, user });
@@ -82,16 +102,82 @@ app.get('/api/me', (req, res) => res.json({ user: req.user }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// ==================== المستخدمون والصلاحيات (للمدير فقط) ====================
-app.get('/api/permission-model', adminOnly, (req, res) => {
+// قائمة الشركات لشاشة تسجيل الدخول (بدون مصادقة): معرّف واسم ونوع فقط
+app.get('/api/companies-meta', (req, res) => {
+  const companies = listCompanies().map(c => ({ id: c.id, name: c.name, business_type: c.business_type }));
+  res.json({ companies });
+});
+
+// ==================== المستخدمون والصلاحيات (على مستوى الشركة) ====================
+// تتطلب مدير منصة أو مدير الشركة نفسها
+function companyUsersPerm(req, res, next) {
+  const companyId = Number(req.params.companyId);
+  if (req.user && usersLib.canManageCompanyUsers(req.user, companyId)) return next();
+  return res.status(403).json({ error: 'هذه العملية متاحة لمدير المنصة أو مدير الشركة' });
+}
+
+function companyUserTarget(req, res, next) {
+  const target = usersLib.getUser(Number(req.params.userId));
+  if (!target || !usersLib.belongsToCompany(target, Number(req.params.companyId))) {
+    return res.status(404).json({ error: 'المستخدم غير موجود في هذه الشركة' });
+  }
+  req.targetUser = target;
+  next();
+}
+
+app.get('/api/companies/:companyId/permission-model', companyUsersPerm, (req, res) => {
   res.json({ windows: usersLib.WINDOWS, actions: usersLib.ACTIONS });
 });
 
-app.get('/api/users', adminOnly, (req, res) => {
+app.get('/api/companies/:companyId/users', companyUsersPerm, (req, res) => {
+  res.json(usersLib.listCompanyUsers(Number(req.params.companyId)));
+});
+
+app.post('/api/companies/:companyId/users', companyUsersPerm, (req, res) => {
+  try {
+    const body = { ...req.body, company_id: Number(req.params.companyId) };
+    if (body.role !== 'admin') body.role = 'user';
+    res.json(usersLib.createUser(body));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.put('/api/companies/:companyId/users/:userId', companyUsersPerm, companyUserTarget, (req, res) => {
+  try {
+    const body = { ...req.body };
+    if (body.role && body.role !== 'admin') body.role = 'user';
+    const u = usersLib.updateUser(Number(req.params.userId), body);
+    if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    res.json(u);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/companies/:companyId/users/:userId', companyUsersPerm, companyUserTarget, (req, res) => {
+  try {
+    if (req.targetUser.id === req.user.id) {
+      return res.status(400).json({ error: 'لا يمكنك حذف حسابك الحالي' });
+    }
+    const ok = usersLib.deleteUser(Number(req.params.userId));
+    if (!ok) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// مسارات قديمة على مستوى المنصة (احتياط لمدير المنصة فقط)
+app.get('/api/permission-model', platformOnly, (req, res) => {
+  res.json({ windows: usersLib.WINDOWS, actions: usersLib.ACTIONS });
+});
+
+app.get('/api/users', platformOnly, (req, res) => {
   res.json(usersLib.listUsers());
 });
 
-app.post('/api/users', adminOnly, (req, res) => {
+app.post('/api/users', platformOnly, (req, res) => {
   try {
     res.json(usersLib.createUser(req.body));
   } catch (e) {
@@ -99,7 +185,7 @@ app.post('/api/users', adminOnly, (req, res) => {
   }
 });
 
-app.put('/api/users/:id', adminOnly, (req, res) => {
+app.put('/api/users/:id', platformOnly, (req, res) => {
   try {
     const u = usersLib.updateUser(Number(req.params.id), req.body);
     if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
@@ -109,7 +195,7 @@ app.put('/api/users/:id', adminOnly, (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', adminOnly, (req, res) => {
+app.delete('/api/users/:id', platformOnly, (req, res) => {
   try {
     const ok = usersLib.deleteUser(Number(req.params.id));
     if (!ok) return res.status(404).json({ error: 'المستخدم غير موجود' });
@@ -128,10 +214,8 @@ app.get('/api/companies', (req, res) => {
     db.close();
     return { ...c, current_fiscal_year: fy, counts };
   });
-  // المستخدم العادي يرى فقط الشركات التي لديه صلاحيات فيها
-  const visible = req.user.role === 'admin'
-    ? companies
-    : companies.filter(c => usersLib.userHasCompany(req.user, c.id));
+  // مدير المنصة يرى كل الشركات، وحساب الشركة يرى شركته فقط
+  const visible = companies.filter(c => usersLib.userHasCompany(req.user, c.id));
   res.json({ companies: visible });
 });
 
@@ -146,7 +230,7 @@ app.get('/api/company-types', (req, res) => {
   res.json({ types });
 });
 
-app.post('/api/companies', adminOnly, (req, res) => {
+app.post('/api/companies', platformOnly, (req, res) => {
   try {
     const company = createCompany(req.body);
     try {
@@ -161,7 +245,12 @@ app.post('/api/companies', adminOnly, (req, res) => {
   }
 });
 
-app.put('/api/companies/:companyId', adminOnly, (req, res) => {
+// بيانات الشركة الأساسية يعدّلها مدير المنصة أو مدير الشركة نفسها
+app.put('/api/companies/:companyId', (req, res, next) => {
+  const companyId = Number(req.params.companyId);
+  if (req.user && (usersLib.isPlatform(req.user) || usersLib.isCompanyAdmin(req.user, companyId))) return next();
+  return res.status(403).json({ error: 'هذه العملية متاحة لمدير المنصة أو مدير الشركة' });
+}, (req, res) => {
   try {
     const company = updateCompany(req.params.companyId, req.body);
     res.json(company);
@@ -170,7 +259,7 @@ app.put('/api/companies/:companyId', adminOnly, (req, res) => {
   }
 });
 
-app.get('/api/companies/:companyId', adminOnly, (req, res) => {
+app.get('/api/companies/:companyId', platformOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const db = accounting.getDb(company.id);
@@ -654,7 +743,7 @@ app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => 
 // ==================== نظام المحادثة الداخلية ====================
 function chatAccess(req, res, next) {
   const companyId = Number(req.params.companyId);
-  if (usersLib.userHasCompany(req.user, companyId)) return next();
+  if (usersLib.belongsToCompany(req.user, companyId)) return next();
   return res.status(403).json({ error: 'ليست لديك صلاحية للوصول إلى محادثات هذه الشركة' });
 }
 
@@ -680,8 +769,8 @@ function closeChatCtx(ctx) { if (ctx && ctx.db) ctx.db.close(); }
 
 // --- مصادقة الأعضاء ---
 function chatMembersList(ctx) {
-  // أعضاء الشركة = كل المستخدمين النشطين الذين لديهم صلاحية على الشركة أو مدير النظام
-  const all = usersLib.listUsers().filter(u => u.is_active && (u.role === 'admin' || usersLib.userHasCompany(u, ctx.company.id)));
+  // أعضاء الشركة = كل المستخدمين النشطين المرتبطين بهذه الشركة تحديداً
+  const all = usersLib.listUsers().filter(u => u.is_active && usersLib.belongsToCompany(u, ctx.company.id));
   const ids = all.map(u => u.id);
   for (const u of all) chatLib.ensureMember(ctx.db, u.id, u.username);
   const depts = ctx.db.prepare('SELECT * FROM hr_departments ORDER BY name').all();
@@ -725,14 +814,14 @@ app.get('/api/companies/:companyId/chat/members', chatAccess, (req, res) => {
   try {
     const data = chatMembersList(ctx);
     data.me = chatLib.memberPublic(ctx.db, req.user.id);
-    data.isAdmin = req.user.role === 'admin';
+    data.isAdmin = usersLib.isCompanyAdmin(req.user, Number(req.params.companyId));
     res.json(data);
   } catch (e) { res.status(400).json({ error: e.message }); }
   finally { closeChatCtx(ctx); }
 });
 
 // --- تعديل ملف عضو (للمدير العام فقط) ---
-app.put('/api/companies/:companyId/chat/members/:userId', chatAccess, adminOnly, (req, res) => {
+app.put('/api/companies/:companyId/chat/members/:userId', chatAccess, companyAdminOnly, (req, res) => {
   const ctx = chatCtx(req, res);
   if (!ctx) return;
   try { res.json(chatLib.setMember(ctx.db, Number(req.params.userId), req.body)); }
@@ -849,7 +938,7 @@ app.get('/api/companies/:companyId/chat/files/:messageId', chatAccess, (req, res
 });
 
 // --- حذف رسالة (للمدير العام فقط، مع تسجيل) ---
-app.post('/api/companies/:companyId/chat/messages/:messageId/delete', chatAccess, adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/chat/messages/:messageId/delete', chatAccess, companyAdminOnly, (req, res) => {
   const ctx = chatCtx(req, res);
   if (!ctx) return;
   try {
@@ -863,7 +952,7 @@ app.post('/api/companies/:companyId/chat/messages/:messageId/delete', chatAccess
 });
 
 // --- تطهير قناة (للمدير العام فقط، مع تسجيل) ---
-app.post('/api/companies/:companyId/chat/channels/:channelId/purge', chatAccess, adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/chat/channels/:channelId/purge', chatAccess, companyAdminOnly, (req, res) => {
   const ctx = chatCtx(req, res);
   if (!ctx) return;
   try {
@@ -1760,21 +1849,21 @@ app.get('/api/companies/:companyId/dashboard', windowPerm('dashboard', 'view'), 
 });
 
 // ==================== أدوات قواعد البيانات (نسخ احتياطي / استعادة / ضغط / إصلاح) ====================
-app.get('/api/companies/:companyId/db-tools', adminOnly, (req, res) => {
+app.get('/api/companies/:companyId/db-tools', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try { res.json(dbTools.info(company.id)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/companies/:companyId/db-tools/backup', adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/db-tools/backup', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try { res.json(dbTools.createBackup(company.id)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.get('/api/companies/:companyId/db-tools/backups/:filename', adminOnly, (req, res) => {
+app.get('/api/companies/:companyId/db-tools/backups/:filename', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try {
@@ -1783,7 +1872,7 @@ app.get('/api/companies/:companyId/db-tools/backups/:filename', adminOnly, (req,
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/companies/:companyId/db-tools/restore', adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/db-tools/restore', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try { res.json(dbTools.restoreFromBackup(company.id, req.body && req.body.filename)); }
@@ -1791,7 +1880,7 @@ app.post('/api/companies/:companyId/db-tools/restore', adminOnly, (req, res) => 
 });
 
 // استعادة من ملف يُرفع مباشرة (application/octet-stream)
-app.post('/api/companies/:companyId/db-tools/restore-upload', adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/db-tools/restore-upload', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const chunks = [];
@@ -1815,14 +1904,14 @@ app.post('/api/companies/:companyId/db-tools/restore-upload', adminOnly, (req, r
   req.on('error', () => { res.status(400).json({ error: 'فشل في قراءة الملف المرفوع' }); });
 });
 
-app.post('/api/companies/:companyId/db-tools/compress', adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/db-tools/compress', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try { res.json(dbTools.compress(company.id)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/companies/:companyId/db-tools/repair', adminOnly, (req, res) => {
+app.post('/api/companies/:companyId/db-tools/repair', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   try { res.json(dbTools.repair(company.id)); }

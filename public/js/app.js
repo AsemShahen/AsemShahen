@@ -38,9 +38,10 @@ const App = {
   data() {
     return {
       authUser: null,
-      loginForm: { username: '', password: '' },
+      loginForm: { username: '', password: '', companyId: '' },
       loginAlert: '',
       loggingIn: false,
+      loginCompanies: [],
       companies: [],
       activeCompany: null,
       info: { settings: {}, active_fiscal_year: null },
@@ -49,12 +50,22 @@ const App = {
       openCreateCompany: false,
       newCompany: {
         name: '', business_type: 'corporate', cr_number: '', vat_number: '',
-        vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '', email: ''
+        vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '',
+        email: '', adminUsername: '', adminPassword: ''
       },
-      businessTypes: []
+      businessTypes: [],
+      openAddAdmin: false,
+      adminTarget: null,
+      addAdminForm: { username: '', password: '' },
+      addingAdmin: false
     };
   },
   computed: {
+    isPlatform() { return !!(this.authUser && this.authUser.role === 'platform'); },
+    isCompanyAdminOfActive() {
+      return !!(this.authUser && this.authUser.role === 'admin' && this.activeCompany
+        && Number(this.authUser.company_id) === Number(this.activeCompany.id));
+    },
     viewComponent() {
       const map = {
         'dashboard': DashboardView,
@@ -100,9 +111,15 @@ const App = {
     },
     navItems() {
       const isHospital = this.activeCompany && this.activeCompany.business_type === 'hospital';
+      const platform = this.isPlatform;
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
-        if (i.key === 'users') return this.authUser && this.authUser.role === 'admin';
+        if (platform) {
+          // مدير المنصة يدقق (قراءة فقط) ولا يشارك في المحادثة ولا يدير مستخدمي الشركة من الداخل
+          if (i.key === 'chat' || i.key === 'users') return false;
+          return can(i.perm || i.key, 'view');
+        }
+        if (i.key === 'users') return this.isCompanyAdminOfActive;
         if (i.alwaysShow) return true;
         return can(i.perm || i.key, 'view');
       }).map(i => ({ ...i, label: t(i.label) }));
@@ -118,32 +135,55 @@ const App = {
       if (!r.ok) throw new Error(data.error || t('خطأ في الطلب'));
       return data;
     },
+    async loadLoginCompanies() {
+      try {
+        const r = await fetch('/api/companies-meta');
+        const d = await r.json();
+        this.loginCompanies = d.companies || [];
+      } catch (e) { this.loginCompanies = []; }
+    },
     async doLogin() {
       this.loggingIn = true;
       this.loginAlert = '';
       try {
         const r = await apiFetch('/api/login', {
           method: 'POST',
-          body: JSON.stringify({ username: this.loginForm.username, password: this.loginForm.password })
+          body: JSON.stringify({
+            username: this.loginForm.username,
+            password: this.loginForm.password,
+            companyId: this.loginForm.companyId || null
+          })
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || t('فشل تسجيل الدخول'));
         localStorage.setItem('muhasib_token', data.token);
         setAuthUser(data.user);
         this.authUser = data.user;
-        await this.loadCompanies();
-        await this.loadBusinessTypes();
-        const savedId = localStorage.getItem('muhasib_company');
-        if (savedId && this.companies.some(c => String(c.id) === savedId)) {
-          this.activeCompany = this.companies.find(c => String(c.id) === savedId);
-          setActiveCompanyId(this.activeCompany.id);
-          this.view = 'dashboard';
-          await this.loadInfo();
-        }
+        await this.enterAfterLogin();
       } catch (e) {
         this.loginAlert = e.message;
       } finally {
         this.loggingIn = false;
+      }
+    },
+    async enterAfterLogin() {
+      this.loginAlert = '';
+      if (this.isPlatform) {
+        // مدير المنصة: شاشة المنصة لإدارة الشركات والتدقيق
+        this.activeCompany = null;
+        setActiveCompanyId(null);
+        localStorage.removeItem('muhasib_company');
+        this.view = 'dashboard';
+        await Promise.all([this.loadCompanies(), this.loadBusinessTypes()]);
+        return;
+      }
+      await this.loadCompanies();
+      await this.loadBusinessTypes();
+      const mine = this.companies.find(c => Number(c.id) === Number(this.authUser.company_id));
+      if (mine) {
+        await this.selectCompany(mine);
+      } else {
+        this.loginAlert = t('حسابك غير مرتبط بأي شركة بعد — تواصل مع مدير المنصة');
       }
     },
     async logout() {
@@ -157,7 +197,7 @@ const App = {
       this.authUser = null;
       this.activeCompany = null;
       this.view = 'dashboard';
-      this.loginForm = { username: '', password: '' };
+      this.loginForm = { username: '', password: '', companyId: '' };
     },
     navigate(view) { this.view = view; this.sidebarOpen = false; },
     toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; },
@@ -211,14 +251,62 @@ const App = {
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || t('خطأ'));
+        const created = data.company;
+        const firstAdmin = {
+          username: this.newCompany.adminUsername,
+          password: this.newCompany.adminPassword
+        };
         this.openCreateCompany = false;
-        this.newCompany = { name: '', business_type: 'corporate', cr_number: '', vat_number: '', vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '', email: '' };
+        this.newCompany = { name: '', business_type: 'corporate', cr_number: '', vat_number: '', vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '', email: '', adminUsername: '', adminPassword: '' };
         await this.loadCompanies();
-        await this.selectCompany(data.company);
+        if (created && this.isPlatform) {
+          if (firstAdmin.username && firstAdmin.password) {
+            try {
+              await this.createAdminAccount({ ...created, adminUsername: firstAdmin.username, adminPassword: firstAdmin.password });
+            } catch (e) {
+              window.alert(e.message);
+            }
+          }
+          await this.selectCompany(created);
+        }
       } catch (e) { alert(e.message); }
+    },
+    openAssignAdmin(c) {
+      this.adminTarget = c;
+      this.addAdminForm = { username: '', password: '' };
+      this.openAddAdmin = true;
+    },
+    async createAdminAccount(company) {
+      const body = {
+        username: this.addAdminForm.username || company.adminUsername,
+        password: this.addAdminForm.password || company.adminPassword,
+        role: 'admin'
+      };
+      const r = await apiFetch(`/api/companies/${company.id}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || t('خطأ'));
+      return data;
+    },
+    async saveAdmin() {
+      if (!this.adminTarget) return;
+      this.addingAdmin = true;
+      try {
+        await this.createAdminAccount(this.adminTarget);
+        alert(t('تم إنشاء مدير الشركة'));
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        this.addingAdmin = false;
+        this.openAddAdmin = false;
+      }
     }
   },
   async created() {
+    await this.loadLoginCompanies();
     const token = localStorage.getItem('muhasib_token');
     if (token) {
       try {
@@ -233,18 +321,12 @@ const App = {
       localStorage.removeItem('muhasib_token');
       localStorage.removeItem('muhasib_company');
       setAuthUser(null);
+      setActiveCompanyId(null);
       this.authUser = null;
       this.activeCompany = null;
     });
     if (!this.authUser) return;
-    await Promise.all([this.loadCompanies(), this.loadBusinessTypes()]);
-    const savedId = localStorage.getItem('muhasib_company');
-    if (savedId && this.companies.some(c => String(c.id) === savedId)) {
-      this.activeCompany = this.companies.find(c => String(c.id) === savedId);
-      setActiveCompanyId(this.activeCompany.id);
-      this.view = 'dashboard';
-      await this.loadInfo();
-    }
+    await this.enterAfterLogin();
   },
   template: document.getElementById('app').innerHTML
 };

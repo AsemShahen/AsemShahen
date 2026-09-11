@@ -6,7 +6,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 
 ## Features
 
-- **Multi-Company**: Each company has its own database file (`company_<id>.db`).
+- **Multi-Company**: Each company has its own database file (`company_<id>.db`), and each account belongs to exactly one company. The platform admin (created at install) provisions companies and audits them, while every company is administered independently by its own company admin.
 - **Activity-Based Chart of Accounts**: Pre-configured charts for corporate, supermarket, factory, medical lab, and hospital businesses.
 - **Saudi VAT (15%)**: VAT reports by period, with accounts 1401 (input VAT) and 2103 (output VAT).
 - **ZATCA E-Invoicing**: Generates compliant e-invoices for the Saudi ZATCA (TLV QR code + UBL 2.1 XML with SHA-256 hashing and ECDSA P-256 signing), with automatic submission (Report / Clearance) on every sale invoice.
@@ -17,10 +17,10 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Inventory & Warehouses**: Products with barcodes, multi-warehouse stock, stock movements, stock counts with automatic shortage/surplus entries, and a **Point of Sale (POS)** screen with barcode scanning.
 - **Human Resources (HR)**: Departments, employees, attendance, leave management (approve/reject), and monthly payroll generation with automatic journal posting (debit 5201 / credit 2104).
 - **Hospital Module** (for hospitals): Patients, doctors & departments, appointments, medical records, and patient billing.
-- **Per-Company User Permissions**: Users can be granted permissions scoped to specific companies and windows.
+- **Company-Scoped Roles & Permissions**: Three roles — `platform` (provisions companies and audits them read-only), `admin` (full control inside its own company only), and `user` (per-window permissions inside its own company). No account can ever reach another company's data.
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
-- **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the system admin only, with every action recorded in the audit log.
+- **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the company admin only, with every action recorded in the audit log.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
 - **Fully Responsive**: Mobile-first responsive layout — collapsible sidebar drawer with a hamburger menu, stacked cards/forms, horizontally scrollable tables, bottom-sheet modals, and a dedicated two-pane chat experience on phones.
 
@@ -34,12 +34,15 @@ node server.js
 
 Then open `http://localhost:3001`.
 
-- Default admin account: **admin / admin123**
-- Demo cashier (supermarket only): **cashier / cashier123**
+- Platform admin account (no company): **admin / admin123** — use it to create companies and appoint each company's admin.
+- Demo company admin (per company): **admin / admin123** — on the login screen choose the company, then sign in to manage it.
+- Demo cashier (supermarket company only): **cashier / cashier123** — choose the supermarket company, then sign in.
 
 ## Usage
 
-1. Create a company (name, activity type, CR number, VAT number, tax rate, fiscal year start month).
+> The **platform admin** manages the company registry (steps 1-2) from the Platform Dashboard. Each **company admin** then signs in to its own company to run its business (steps 3-7). A company admin cannot see or manage any other company.
+
+1. Create a company (name, activity type, CR number, VAT number, tax rate, fiscal year start month) and appoint its first admin.
 2. Review the auto-generated chart of accounts for the selected activity.
 3. Record journal entries, invoices, customers, and suppliers.
 4. Review reports (trial balance, income statement, balance sheet, VAT report).
@@ -91,7 +94,7 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 - **Rich content**: text messages, instant voice recordings, images, and documents (PDF / Word / Excel / any file up to 30 MB) rendered inline in the conversation.
 - **Direct calls**: peer-to-peer voice and video calls between employees via WebRTC (no media server; signaling goes through the app). The connection automatically retries with an ICE restart and buffers ICE candidates, and the server exposes a configurable TURN relay for stricter networks (`RTC_TURN_URL`, `RTC_TURN_USERNAME`, `RTC_TURN_CREDENTIAL` or a full list via `RTC_ICE_JSON`).
 - **Permanent history**: every message is stored in the company database and is included in backup/restore; employees cannot erase anything.
-- **Admin oversight**: deleting a single message or purging an entire channel is available only to the system admin, and every deletion is written to the audit log inside the company database.
+- **Admin oversight**: deleting a single message or purging an entire channel is available only to the company admin, and every deletion is written to the audit log inside the company database.
 - **Member management** (admin): assign each employee's department and edit their display name and job title from the conversation list.
 
 ## Settings Tabs
