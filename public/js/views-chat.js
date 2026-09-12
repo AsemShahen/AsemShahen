@@ -3,7 +3,7 @@
 // ==================== نظام المحادثة الداخلية ====================
 // محادثات كتابية وصوتية وملفات ومكالمات مباشرة بين موظفي الشركة
 // يظهر للقنوات (عام/أقسام) والمحادثات المباشرة مع جميع الأعضاء
-// سجل المحادثة دائم لا يُحذف، والحذف متاح لمدير النظام مع تسجيله
+// سجل المحادثة دائم لا يُحذف، والحذف متاح لمدير الشركة مع تسجيله
 
 const FILE_ICONS = { pdf: '📕', doc: '📄', docx: '📄', xls: '📊', xlsx: '📊', ppt: '📽️', pptx: '📽️', zip: '🗜️', txt: '📝' };
 const MAX_CHAT_UPLOAD = 30 * 1024 * 1024; // 30 MB
@@ -90,7 +90,7 @@ const ChatView = {
             kind: 'dm', peerId: m.user_id, name: m.display_name,
             dept: m.department_name || '', online: !!m.online,
             last: c ? c.last : null, unread: c ? c.unread : 0,
-            title: m.title || ''
+            title: m.title || '', isPlatform: !!m.isPlatform
           };
         })
         .sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name, 'ar'));
@@ -952,6 +952,7 @@ const ChatView = {
           </div>
           <div class="chat-row-body">
             <div class="chat-row-top"><strong>{{ m.name }}</strong>
+              <span v-if="m.isPlatform" class="badge gray" style="margin-inline-start:6px;">{{ t('مدير المنصة') }}</span>
               <span class="chat-dept">{{ m.dept }}</span>
               <span v-if="isAdmin" class="chat-mini" @click.stop="editMember(m)" title="تعديل العضو">✎</span>
             </div>

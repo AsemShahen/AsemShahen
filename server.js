@@ -743,7 +743,7 @@ app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => 
 // ==================== نظام المحادثة الداخلية ====================
 function chatAccess(req, res, next) {
   const companyId = Number(req.params.companyId);
-  if (usersLib.belongsToCompany(req.user, companyId)) return next();
+  if (usersLib.canAccessCompany(req.user, companyId)) return next();
   return res.status(403).json({ error: 'ليست لديك صلاحية للوصول إلى محادثات هذه الشركة' });
 }
 
@@ -769,13 +769,16 @@ function closeChatCtx(ctx) { if (ctx && ctx.db) ctx.db.close(); }
 
 // --- مصادقة الأعضاء ---
 function chatMembersList(ctx) {
-  // أعضاء الشركة = كل المستخدمين النشطين المرتبطين بهذه الشركة تحديداً
-  const all = usersLib.listUsers().filter(u => u.is_active && usersLib.belongsToCompany(u, ctx.company.id));
+  // أعضاء المحادثة = كل مستخدمي الشركة النشطين + مديرو المنصة (ليشاركوا في المحادثة العامة)
+  const all = usersLib.listUsers().filter(u => u.is_active && (usersLib.belongsToCompany(u, ctx.company.id) || usersLib.isPlatform(u)));
   const ids = all.map(u => u.id);
   for (const u of all) chatLib.ensureMember(ctx.db, u.id, u.username);
   const depts = ctx.db.prepare('SELECT * FROM hr_departments ORDER BY name').all();
   const online = chatLib.onlineUsers(ctx.company.id);
-  const members = chatLib.listMembers(ctx.db, ids).map(m => ({ ...m, online: online.includes(m.user_id) }));
+  const members = chatLib.listMembers(ctx.db, ids).map(m => {
+    const u = all.find(x => x.id === m.user_id);
+    return { ...m, online: online.includes(m.user_id), isPlatform: !!(u && usersLib.isPlatform(u)) };
+  });
   return { members, departments: depts, online };
 }
 

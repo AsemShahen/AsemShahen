@@ -70,6 +70,7 @@
             </div>
             <div class="company-card-actions" v-if="isPlatform" @click.stop>
               <button class="btn btn-sm btn-primary" @click="selectCompany(c)">{{ t('🔍 التدقيق (دخول)') }}</button>
+              <button class="btn btn-sm btn-ghost" @click="openCompanyChat(c)">{{ t('💬 المحادثة') }}</button>
               <button class="btn btn-sm btn-ghost" @click="openAssignAdmin(c)">{{ t('👤 تعيين مدير') }}</button>
             </div>
           </div>
@@ -244,18 +245,18 @@
     </template>
   </div>
 
-  <script src="/js/i18n.js?v=18"></script>
-  <script src="/js/views-common.js?v=18"></script>
-  <script src="/js/views-chat.js?v=18"></script>
-  <script src="/js/views-dashboard.js?v=18"></script>
-  <script src="/js/views-accounts.js?v=18"></script>
-  <script src="/js/views-reports.js?v=18"></script>
-  <script src="/js/views-invoices.js?v=18"></script>
-  <script src="/js/views-inventory.js?v=18"></script>
-  <script src="/js/views-hr.js?v=18"></script>
-  <script src="/js/views-closing.js?v=18"></script>
-  <script src="/js/views-users.js?v=18"></script>
-  <script src="/js/views-hospital.js?v=18"></script>
-  <script src="/js/app.js?v=18"></script>
+  <script src="/js/i18n.js?v=19"></script>
+  <script src="/js/views-common.js?v=19"></script>
+  <script src="/js/views-chat.js?v=19"></script>
+  <script src="/js/views-dashboard.js?v=19"></script>
+  <script src="/js/views-accounts.js?v=19"></script>
+  <script src="/js/views-reports.js?v=19"></script>
+  <script src="/js/views-invoices.js?v=19"></script>
+  <script src="/js/views-inventory.js?v=19"></script>
+  <script src="/js/views-hr.js?v=19"></script>
+  <script src="/js/views-closing.js?v=19"></script>
+  <script src="/js/views-users.js?v=19"></script>
+  <script src="/js/views-hospital.js?v=19"></script>
+  <script src="/js/app.js?v=19"></script>
 </body>
 </html>

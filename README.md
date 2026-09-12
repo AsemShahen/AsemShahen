@@ -94,6 +94,7 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 - **Rich content**: text messages, instant voice recordings, images, and documents (PDF / Word / Excel / any file up to 30 MB) rendered inline in the conversation.
 - **Direct calls**: peer-to-peer voice and video calls between employees via WebRTC (no media server; signaling goes through the app). The connection automatically retries with an ICE restart and buffers ICE candidates, and the server exposes a configurable TURN relay for stricter networks (`RTC_TURN_URL`, `RTC_TURN_USERNAME`, `RTC_TURN_CREDENTIAL` or a full list via `RTC_ICE_JSON`).
 - **Permanent history**: every message is stored in the company database and is included in backup/restore; employees cannot erase anything.
+- **Platform participation**: the platform admin can open any company's chat from the Platform Dashboard and take part in its channels and direct conversations (destructive actions remain restricted to the company admin).
 - **Admin oversight**: deleting a single message or purging an entire channel is available only to the company admin, and every deletion is written to the audit log inside the company database.
 - **Member management** (admin): assign each employee's department and edit their display name and job title from the conversation list.
 

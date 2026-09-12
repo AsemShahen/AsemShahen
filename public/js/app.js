@@ -115,8 +115,9 @@ const App = {
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
         if (platform) {
-          // مدير المنصة يدقق (قراءة فقط) ولا يشارك في المحادثة ولا يدير مستخدمي الشركة من الداخل
-          if (i.key === 'chat' || i.key === 'users') return false;
+          // مدير المنصة يدقق (قراءة فقط) ويشارك في محادثة الشركة التي يدخلها
+          if (i.key === 'users') return false;
+          if (i.key === 'chat') return !!this.activeCompany;
           return can(i.perm || i.key, 'view');
         }
         if (i.key === 'users') return this.isCompanyAdminOfActive;
@@ -219,6 +220,13 @@ const App = {
       localStorage.setItem('muhasib_company', String(c.id));
       setActiveCompanyId(c.id);
       this.view = 'dashboard';
+      await this.loadInfo();
+    },
+    async openCompanyChat(c) {
+      this.activeCompany = c;
+      localStorage.setItem('muhasib_company', String(c.id));
+      setActiveCompanyId(c.id);
+      this.view = 'chat';
       await this.loadInfo();
     },
     async loadCompanies() {

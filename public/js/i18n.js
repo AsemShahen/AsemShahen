@@ -975,6 +975,7 @@ const EN_DICT = {
 
   // ===== المحادثة الداخلية =====
   'المحادثة الداخلية': 'Internal Chat',
+  '💬 المحادثة': '💬 Chat',
   'عام': 'General',
   'قنوات الأقسام': 'Department Channels',
   'قناة عامة لكل الموظفين': 'General channel for all staff',
