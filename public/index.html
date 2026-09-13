@@ -11,77 +11,99 @@
 </head>
 <body>
   <div id="app" v-cloak>
-    <!-- ==================== شاشة تسجيل الدخول ==================== -->
-    <div v-if="!authUser" class="login-screen">
-      <div class="login-card">
+    <!-- ==================== الصفحة العامة: سجل الشركات ==================== -->
+    <div v-if="!authUser || !activeCompany" class="company-screen">
+      <div class="brand-banner">
         <div class="flex-between" style="margin-bottom:6px;">
           <div></div>
-          <select class="lang-select" v-model="i18n.lang">
-            <option value="ar">العربية</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <div class="brand-logo">📊</div>
-        <h1>{{ t('نظام المحاسب') }}</h1>
-        <p class="login-sub">{{ t('منظومة محاسبة مالية شاملة مع الفاتورة الإلكترونية السعودية (ZATCA)') }}</p>
-        <div v-if="loginAlert" class="alert error" style="margin-top:14px;">{{ loginAlert }}</div>
-        <div class="login-fields">
-          <label>{{ t('تسجيل الدخول إلى') }}
-            <select v-model="loginForm.companyId">
-              <option value="">{{ t('منصة النظام — مدير المنصة') }}</option>
-              <option v-for="c in loginCompanies" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <span class="chip" v-if="authUser && isPlatform">👤 {{ authUser.username }} · {{ t('مدير المنصة') }}</span>
+            <button v-if="authUser" class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.35);" @click="logout">{{ t('🚪 تسجيل الخروج') }}</button>
+            <select class="lang-select" v-model="i18n.lang">
+              <option value="ar">العربية</option>
+              <option value="en">English</option>
             </select>
-          </label>
-          <label>{{ t('اسم المستخدم') }}
-            <input v-model.trim="loginForm.username" dir="ltr" placeholder="admin" autocomplete="username">
-          </label>
-          <label>{{ t('كلمة المرور') }}
-            <input type="password" v-model="loginForm.password" dir="ltr" placeholder="••••••" autocomplete="current-password" @keyup.enter="doLogin">
-          </label>
+          </div>
         </div>
-        <button class="btn btn-primary btn-lg login-btn" @click="doLogin" :disabled="!loginForm.username || !loginForm.password || loggingIn">
-          {{ loggingIn ? t('جارٍ تسجيل الدخول...') : t('تسجيل الدخول') }}
-        </button>
-        <p class="login-hint">{{ t('حساب المنصة الافتراضي: admin / admin123 (اختر "منصة النظام"). لحسابات الشركات اختر الشركة أولاً.') }}</p>
-      </div>
-    </div>
-
-    <!-- ==================== بعد تسجيل الدخول ==================== -->
-    <template v-else>
-    <!-- ==================== شاشة اختيار الشركة (مدير المنصة) ==================== -->
-    <div v-if="!activeCompany" class="company-screen">
-      <div class="brand-banner">
         <div class="brand-logo">📊</div>
         <h1>{{ t('نظام المحاسب') }}</h1>
-        <p v-if="isPlatform">{{ t('منصة إدارة الشركات — أنشئ الشركات وعيّن مدراءها ودقّق في بياناتها') }}</p>
-        <p v-else>{{ t('برنامج محاسبة مالي شامل - شركات، سوبر ماركت، مصانع، مخابر طبية') }}</p>
+        <p v-if="isPlatform">{{ t('منصة إدارة الشركات — أنشئ الشركات وعيّن مدراءها وعدّل بياناتها أو احذفها') }}</p>
+        <p v-else>{{ t('سجل الشركات — استعرض البيانات وافتح الشركة بالدخول كمستخدم أو مدير') }}</p>
         <p class="brand-sub">{{ t('متوافق مع المعايير السعودية وضريبة القيمة المضافة (15%)') }}</p>
       </div>
 
       <div class="company-screen-body">
-        <div class="companies-grid">
-          <div v-for="c in companies" :key="c.id" class="company-card" @click="selectCompany(c)">
-            <div class="company-card-icon">{{ typeIcon(c.business_type) }}</div>
-            <div class="company-card-name">{{ c.name }}</div>
-            <div class="company-card-type">{{ typeLabel(c.business_type) }}</div>
-            <div class="company-card-meta">
-              <span>{{ t('السنة المالية:') }} {{ c.current_fiscal_year ? c.current_fiscal_year.name : '—' }}</span>
-              <span>{{ c.counts.entries }} {{ t('قيد') }} | {{ c.counts.invoices }} {{ t('فاتورة') }}</span>
-            </div>
-            <div class="company-card-actions" v-if="isPlatform" @click.stop>
-              <button class="btn btn-sm btn-primary" @click="selectCompany(c)">{{ t('🔍 التدقيق (دخول)') }}</button>
-              <button class="btn btn-sm btn-ghost" @click="openCompanyChat(c)">{{ t('💬 المحادثة') }}</button>
-              <button class="btn btn-sm btn-ghost" @click="openAssignAdmin(c)">{{ t('👤 تعيين مدير') }}</button>
-            </div>
-          </div>
+        <div class="company-toolbar">
+          <button class="btn btn-primary" @click="requestAction('create')">+ {{ t('إنشاء شركة جديدة') }}</button>
+          <span class="muted" v-if="authUser && isPlatform">{{ t('صلاحيات مدير المنصة مفعّلة لهذه الجلسة') }}</span>
+          <span class="muted" v-else-if="!authUser">{{ t('العمليات الإدارية تتطلب تسجيل دخول مدير المنصة') }}</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{{ t('اسم الشركة') }}</th>
+                <th>{{ t('النوع') }}</th>
+                <th>{{ t('السجل التجاري') }}</th>
+                <th>{{ t('الرقم الضريبي') }}</th>
+                <th>{{ t('بداية السنة المالية') }}</th>
+                <th>{{ t('نهاية السنة المالية') }}</th>
+                <th>{{ t('تاريخ الإنشاء') }}</th>
+                <th>{{ t('إجراءات') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(c, i) in companies" :key="c.id">
+                <td class="num">{{ i + 1 }}</td>
+                <td><strong>{{ c.name }}</strong></td>
+                <td>{{ typeLabel(c.business_type) }}</td>
+                <td dir="ltr">{{ c.cr_number || '—' }}</td>
+                <td dir="ltr">{{ c.vat_number || '—' }}</td>
+                <td dir="ltr">{{ c.fiscal_year_start_date || '—' }}</td>
+                <td dir="ltr">{{ c.fiscal_year_end_date || '—' }}</td>
+                <td dir="ltr">{{ (c.created_at || '').slice(0, 10) || '—' }}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn btn-sm btn-primary" @click="requestAction('open', c)">{{ t('فتح') }}</button>
+                    <button class="btn btn-sm btn-ghost" @click="requestAction('edit', c)">{{ t('تعديل') }}</button>
+                    <button class="btn btn-sm btn-ghost" @click="requestAction('admin', c)">{{ t('إضافة مدير') }}</button>
+                    <button class="btn btn-sm btn-danger" @click="requestAction('delete', c)">{{ t('حذف') }}</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="company-empty" v-if="!companies.length">
           <p v-if="isPlatform">{{ t('لا توجد شركات بعد. ابدأ بإنشاء أول شركة:') }}</p>
-          <p v-else>{{ t('لا توجد شركات متاحة لحسابك.') }}</p>
+          <p v-else>{{ t('لا توجد شركات مسجّلة بعد.') }}</p>
         </div>
+      </div>
 
-        <button v-if="isPlatform" class="btn btn-primary btn-lg" @click="openCreateCompany = true">+ {{ t('إنشاء شركة جديدة') }}</button>
+      <!-- مودال تسجيل الدخول الإداري / دخول الشركة -->
+      <div v-if="loginModal.open" class="modal-overlay" tabindex="-1" @click.self="loginModal.open = false" @keydown.esc="loginModal.open = false">
+        <div class="modal" style="max-width:440px;">
+          <h3>{{ loginModalTitle }}</h3>
+          <p class="muted mb-2" v-if="loginModal.company">{{ loginModal.company.name }}</p>
+          <div v-if="loginModal.error" class="alert error" style="margin-bottom:12px;">{{ loginModal.error }}</div>
+          <div class="form-grid">
+            <label>{{ t('اسم المستخدم') }}
+              <input v-model.trim="loginModal.username" dir="ltr" placeholder="admin" autocomplete="username" @keyup.enter="submitLogin">
+            </label>
+            <label>{{ t('كلمة المرور') }}
+              <input type="password" v-model="loginModal.password" dir="ltr" placeholder="••••••" autocomplete="current-password" @keyup.enter="submitLogin">
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" @click="loginModal.open = false">{{ t('إلغاء') }}</button>
+            <button class="btn btn-primary" @click="submitLogin" :disabled="loginModal.busy || !loginModal.username || !loginModal.password">
+              {{ loginModal.busy ? t('جارٍ تسجيل الدخول...') : t('تسجيل الدخول') }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- مودال إنشاء شركة -->
@@ -106,19 +128,17 @@
             <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }}
               <input type="number" v-model.number="newCompany.vat_rate" min="0" max="100" step="any">
             </label>
-            <label>{{ t('شهر بداية السنة المالية') }}
-              <select v-model.number="newCompany.fiscal_year_start_month">
-                <option :value="1">{{ t('يناير') }}</option>
-                <option :value="4">{{ t('أبريل') }}</option>
-                <option :value="7">{{ t('يوليو') }}</option>
-                <option :value="10">{{ t('أكتوبر') }}</option>
-              </select>
+            <label>{{ t('بداية السنة المالية') }}
+              <input type="date" v-model="newCompany.fiscal_year_start_date" dir="ltr">
             </label>
-            <label class="span2">{{ t('العنوان') }}
-              <input v-model.trim="newCompany.address" :placeholder="t('العنوان')">
+            <label>{{ t('نهاية السنة المالية') }}
+              <input type="date" v-model="newCompany.fiscal_year_end_date" dir="ltr">
             </label>
             <label>{{ t('الهاتف') }}
               <input v-model.trim="newCompany.phone" placeholder="05xxxxxxxx" dir="ltr">
+            </label>
+            <label class="span2">{{ t('العنوان') }}
+              <input v-model.trim="newCompany.address" :placeholder="t('العنوان')">
             </label>
             <label>{{ t('البريد الإلكتروني') }}
               <input v-model.trim="newCompany.email" placeholder="info@company.com" dir="ltr">
@@ -133,6 +153,68 @@
           <div class="modal-actions">
             <button class="btn btn-ghost" @click="openCreateCompany = false">{{ t('إلغاء') }}</button>
             <button class="btn btn-primary" @click="createCompany" :disabled="!newCompany.name">{{ t('إنشاء الشركة') }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- مودال تعديل معلومات الشركة -->
+      <div v-if="editOpen" class="modal-overlay" tabindex="-1" @click.self="editOpen = false" @keydown.esc="editOpen = false">
+        <div class="modal">
+          <h3>{{ t('تعديل معلومات الشركة') }}</h3>
+          <div class="form-grid">
+            <label>{{ t('اسم الشركة / المنشأة') }}
+              <input v-model.trim="editForm.name">
+            </label>
+            <label>{{ t('نوع النشاط') }}
+              <select v-model="editForm.business_type">
+                <option v-for="bt in businessTypes" :key="bt.code" :value="bt.code">{{ t(bt.label) }}</option>
+              </select>
+            </label>
+            <label>{{ t('رقم السجل التجاري') }}
+              <input v-model.trim="editForm.cr_number" dir="ltr">
+            </label>
+            <label>{{ t('الرقم الضريبي') }}
+              <input v-model.trim="editForm.vat_number" dir="ltr">
+            </label>
+            <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }}
+              <input type="number" v-model.number="editForm.vat_rate" min="0" max="100" step="any">
+            </label>
+            <label>{{ t('بداية السنة المالية') }}
+              <input type="date" v-model="editForm.fiscal_year_start_date" dir="ltr">
+            </label>
+            <label>{{ t('نهاية السنة المالية') }}
+              <input type="date" v-model="editForm.fiscal_year_end_date" dir="ltr">
+            </label>
+            <label>{{ t('الهاتف') }}
+              <input v-model.trim="editForm.phone" dir="ltr">
+            </label>
+            <label class="span2">{{ t('العنوان') }}
+              <input v-model.trim="editForm.address">
+            </label>
+            <label>{{ t('البريد الإلكتروني') }}
+              <input v-model.trim="editForm.email" dir="ltr">
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" @click="editOpen = false">{{ t('إلغاء') }}</button>
+            <button class="btn btn-primary" @click="saveCompany" :disabled="savingCompany || !editForm.name">
+              {{ savingCompany ? t('جارٍ الحفظ...') : t('حفظ') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- مودال تأكيد حذف الشركة -->
+      <div v-if="deleteTarget" class="modal-overlay" tabindex="-1" @click.self="deleteTarget = null" @keydown.esc="deleteTarget = null">
+        <div class="modal" style="max-width:460px;">
+          <h3>{{ t('حذف الشركة') }}</h3>
+          <p>{{ t('سيتم حذف الشركة وكل ملفات قاعدة بياناتها نهائياً. لا يمكن التراجع عن هذه العملية.') }}</p>
+          <p class="muted mb-2">{{ deleteTarget.name }}</p>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" @click="deleteTarget = null">{{ t('إلغاء') }}</button>
+            <button class="btn btn-danger" @click="confirmDeleteCompany" :disabled="deletingCompany">
+              {{ deletingCompany ? t('جارٍ الحذف...') : t('حذف نهائي') }}
+            </button>
           </div>
         </div>
       </div>
@@ -242,21 +324,20 @@
         </div>
       </div>
     </div>
-    </template>
   </div>
 
-  <script src="/js/i18n.js?v=19"></script>
-  <script src="/js/views-common.js?v=19"></script>
-  <script src="/js/views-chat.js?v=19"></script>
-  <script src="/js/views-dashboard.js?v=19"></script>
-  <script src="/js/views-accounts.js?v=19"></script>
-  <script src="/js/views-reports.js?v=19"></script>
-  <script src="/js/views-invoices.js?v=19"></script>
-  <script src="/js/views-inventory.js?v=19"></script>
-  <script src="/js/views-hr.js?v=19"></script>
-  <script src="/js/views-closing.js?v=19"></script>
-  <script src="/js/views-users.js?v=19"></script>
-  <script src="/js/views-hospital.js?v=19"></script>
-  <script src="/js/app.js?v=19"></script>
+  <script src="/js/i18n.js?v=20"></script>
+  <script src="/js/views-common.js?v=20"></script>
+  <script src="/js/views-chat.js?v=20"></script>
+  <script src="/js/views-dashboard.js?v=20"></script>
+  <script src="/js/views-accounts.js?v=20"></script>
+  <script src="/js/views-reports.js?v=20"></script>
+  <script src="/js/views-invoices.js?v=20"></script>
+  <script src="/js/views-inventory.js?v=20"></script>
+  <script src="/js/views-hr.js?v=20"></script>
+  <script src="/js/views-closing.js?v=20"></script>
+  <script src="/js/views-users.js?v=20"></script>
+  <script src="/js/views-hospital.js?v=20"></script>
+  <script src="/js/app.js?v=20"></script>
 </body>
 </html>

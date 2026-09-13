@@ -74,6 +74,16 @@ html, body {
 .company-card-type { color: var(--primary); font-size: 13px; margin: 4px 0 10px; font-weight: 600; }
 .company-card-meta { color: var(--text-muted); font-size: 12px; border-top: 1px dashed var(--border); padding-top: 10px; display: flex; justify-content: space-between; }
 .company-empty { color: var(--text-muted); margin: 10px 0 20px; }
+.company-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-bottom: 16px; text-align: right;
+}
+.company-toolbar .muted { font-size: 13px; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.company-screen-body .table-wrap {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); text-align: right;
+}
 
 /* ==================== أزرار ==================== */
 .btn {

@@ -102,9 +102,19 @@ app.get('/api/me', (req, res) => res.json({ user: req.user }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// قائمة الشركات لشاشة تسجيل الدخول (بدون مصادقة): معرّف واسم ونوع فقط
+// قائمة الشركات لشاشة الدخول والصفحة العامة (بدون مصادقة): المعلومات الأساسية فقط
 app.get('/api/companies-meta', (req, res) => {
-  const companies = listCompanies().map(c => ({ id: c.id, name: c.name, business_type: c.business_type }));
+  const companies = listCompanies().map(c => ({
+    id: c.id,
+    name: c.name,
+    business_type: c.business_type,
+    cr_number: c.cr_number || '',
+    vat_number: c.vat_number || '',
+    vat_rate: c.vat_rate,
+    fiscal_year_start_date: c.fiscal_year_start_date || '',
+    fiscal_year_end_date: c.fiscal_year_end_date || '',
+    created_at: c.created_at
+  }));
   res.json({ companies });
 });
 
@@ -254,6 +264,19 @@ app.put('/api/companies/:companyId', (req, res, next) => {
   try {
     const company = updateCompany(req.params.companyId, req.body);
     res.json(company);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// حذف شركة وملفات قاعدة بياناتها (مدير المنصة فقط)
+app.delete('/api/companies/:companyId', platformOnly, (req, res) => {
+  const id = Number(req.params.companyId);
+  const company = getCompany(id);
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  try {
+    deleteCompany(id);
+    res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

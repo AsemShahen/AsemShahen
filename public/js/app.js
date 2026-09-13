@@ -38,22 +38,29 @@ const App = {
   data() {
     return {
       authUser: null,
-      loginForm: { username: '', password: '', companyId: '' },
-      loginAlert: '',
-      loggingIn: false,
-      loginCompanies: [],
       companies: [],
       activeCompany: null,
       info: { settings: {}, active_fiscal_year: null },
       view: 'dashboard',
       sidebarOpen: false,
+      businessTypes: [],
+      // نافذة تسجيل الدخول (للأوامر الإدارية أو فتح شركة)
+      loginModal: { open: false, action: null, company: null, username: '', password: '', error: '', busy: false },
+      // إنشاء شركة
       openCreateCompany: false,
       newCompany: {
         name: '', business_type: 'corporate', cr_number: '', vat_number: '',
-        vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '',
-        email: '', adminUsername: '', adminPassword: ''
+        vat_rate: 15, fiscal_year_start_date: '', fiscal_year_end_date: '',
+        address: '', phone: '', email: '', adminUsername: '', adminPassword: ''
       },
-      businessTypes: [],
+      // تعديل شركة
+      editOpen: false,
+      editForm: {},
+      savingCompany: false,
+      // حذف شركة
+      deleteTarget: null,
+      deletingCompany: false,
+      // تعيين مدير
       openAddAdmin: false,
       adminTarget: null,
       addAdminForm: { username: '', password: '' },
@@ -62,6 +69,14 @@ const App = {
   },
   computed: {
     isPlatform() { return !!(this.authUser && this.authUser.role === 'platform'); },
+    loginModalTitle() {
+      if (this.loginModal.action === 'open') return t('تسجيل الدخول للشركة');
+      if (this.loginModal.action === 'create') return t('تسجيل دخول مدير المنصة — إنشاء شركة');
+      if (this.loginModal.action === 'edit') return t('تسجيل دخول مدير المنصة — تعديل شركة');
+      if (this.loginModal.action === 'delete') return t('تسجيل دخول مدير المنصة — حذف شركة');
+      if (this.loginModal.action === 'admin') return t('تسجيل دخول مدير المنصة — إضافة مدير');
+      return t('تسجيل الدخول');
+    },
     isCompanyAdminOfActive() {
       return !!(this.authUser && this.authUser.role === 'admin' && this.activeCompany
         && Number(this.authUser.company_id) === Number(this.activeCompany.id));
@@ -136,41 +151,78 @@ const App = {
       if (!r.ok) throw new Error(data.error || t('خطأ في الطلب'));
       return data;
     },
-    async loadLoginCompanies() {
-      try {
-        const r = await fetch('/api/companies-meta');
-        const d = await r.json();
-        this.loginCompanies = d.companies || [];
-      } catch (e) { this.loginCompanies = []; }
+    resetNewCompany() {
+      this.newCompany = {
+        name: '', business_type: 'corporate', cr_number: '', vat_number: '',
+        vat_rate: 15, fiscal_year_start_date: '', fiscal_year_end_date: '',
+        address: '', phone: '', email: '', adminUsername: '', adminPassword: ''
+      };
     },
-    async doLogin() {
-      this.loggingIn = true;
-      this.loginAlert = '';
+    // تنفيذ إجراء على الشركات: مدير المنصة ينفّذه مباشرة، وغيره يفتح نافذة تسجيل الدخول
+    requestAction(action, company) {
+      if (action === 'create') {
+        if (this.isPlatform) { this.resetNewCompany(); this.openCreateCompany = true; }
+        else this.openLogin('create', null);
+        return;
+      }
+      if (this.isPlatform) {
+        if (action === 'edit') this.openEdit(company);
+        else if (action === 'delete') this.deleteTarget = company;
+        else if (action === 'admin') this.openAssignAdmin(company);
+        else if (action === 'open') this.selectCompany(company);
+        return;
+      }
+      this.openLogin(action, company);
+    },
+    openLogin(action, company) {
+      this.loginModal = { open: true, action, company, username: '', password: '', error: '', busy: false };
+    },
+    async submitLogin() {
+      const m = this.loginModal;
+      m.busy = true; m.error = '';
       try {
         const r = await apiFetch('/api/login', {
           method: 'POST',
           body: JSON.stringify({
-            username: this.loginForm.username,
-            password: this.loginForm.password,
-            companyId: this.loginForm.companyId || null
+            username: m.username,
+            password: m.password,
+            companyId: (m.action === 'open' && m.company) ? m.company.id : null
           })
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || t('فشل تسجيل الدخول'));
+        const adminActions = ['create', 'edit', 'delete', 'admin'];
+        if (adminActions.includes(m.action) && data.user.role !== 'platform') {
+          try { await apiFetch('/api/logout', { method: 'POST', headers: { 'x-auth-token': data.token } }); } catch (e) { /* تجاهل */ }
+          throw new Error(t('هذه العملية تتطلب حساب مدير المنصة'));
+        }
         localStorage.setItem('muhasib_token', data.token);
         setAuthUser(data.user);
         this.authUser = data.user;
-        await this.enterAfterLogin();
+        const action = m.action, company = m.company;
+        m.open = false;
+        if (action === 'open') {
+          await this.selectCompany(company);
+        } else {
+          this.activeCompany = null;
+          setActiveCompanyId(null);
+          localStorage.removeItem('muhasib_company');
+          this.view = 'dashboard';
+          await Promise.all([this.loadCompanies(), this.loadBusinessTypes()]);
+          if (action === 'create') { this.resetNewCompany(); this.openCreateCompany = true; }
+          else if (action === 'edit') await this.openEdit(company);
+          else if (action === 'delete') this.deleteTarget = company;
+          else if (action === 'admin') this.openAssignAdmin(company);
+        }
       } catch (e) {
-        this.loginAlert = e.message;
+        m.error = e.message;
       } finally {
-        this.loggingIn = false;
+        m.busy = false;
       }
     },
     async enterAfterLogin() {
-      this.loginAlert = '';
       if (this.isPlatform) {
-        // مدير المنصة: شاشة المنصة لإدارة الشركات والتدقيق
+        // مدير المنصة: سجل الشركات لإدارتها والتدقيق
         this.activeCompany = null;
         setActiveCompanyId(null);
         localStorage.removeItem('muhasib_company');
@@ -181,11 +233,33 @@ const App = {
       await this.loadCompanies();
       await this.loadBusinessTypes();
       const mine = this.companies.find(c => Number(c.id) === Number(this.authUser.company_id));
-      if (mine) {
-        await this.selectCompany(mine);
-      } else {
-        this.loginAlert = t('حسابك غير مرتبط بأي شركة بعد — تواصل مع مدير المنصة');
-      }
+      if (mine) await this.selectCompany(mine);
+    },
+    async openEdit(company) {
+      try {
+        const d = await this.api(`/api/companies/${company.id}`);
+        this.editForm = { ...d.company };
+        this.editOpen = true;
+      } catch (e) { window.alert(e.message); }
+    },
+    async saveCompany() {
+      this.savingCompany = true;
+      try {
+        await this.api(`/api/companies/${this.editForm.id}`, { method: 'PUT', body: this.editForm });
+        this.editOpen = false;
+        await this.loadCompanies();
+      } catch (e) { window.alert(e.message); }
+      finally { this.savingCompany = false; }
+    },
+    async confirmDeleteCompany() {
+      if (!this.deleteTarget) return;
+      this.deletingCompany = true;
+      try {
+        await this.api(`/api/companies/${this.deleteTarget.id}`, { method: 'DELETE' });
+        this.deleteTarget = null;
+        await this.loadCompanies();
+      } catch (e) { window.alert(e.message); }
+      finally { this.deletingCompany = false; }
     },
     async logout() {
       try {
@@ -198,7 +272,8 @@ const App = {
       this.authUser = null;
       this.activeCompany = null;
       this.view = 'dashboard';
-      this.loginForm = { username: '', password: '', companyId: '' };
+      this.loginModal = { open: false, action: null, company: null, username: '', password: '', error: '', busy: false };
+      await this.loadCompanies();
     },
     navigate(view) { this.view = view; this.sidebarOpen = false; },
     toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; },
@@ -231,7 +306,7 @@ const App = {
     },
     async loadCompanies() {
       try {
-        const r = await apiFetch('/api/companies');
+        const r = await fetch('/api/companies-meta');
         const d = await r.json();
         this.companies = d.companies || [];
       } catch (e) { console.error(e); }
@@ -265,17 +340,14 @@ const App = {
           password: this.newCompany.adminPassword
         };
         this.openCreateCompany = false;
-        this.newCompany = { name: '', business_type: 'corporate', cr_number: '', vat_number: '', vat_rate: 15, fiscal_year_start_month: 1, address: '', phone: '', email: '', adminUsername: '', adminPassword: '' };
+        this.resetNewCompany();
         await this.loadCompanies();
-        if (created && this.isPlatform) {
-          if (firstAdmin.username && firstAdmin.password) {
-            try {
-              await this.createAdminAccount({ ...created, adminUsername: firstAdmin.username, adminPassword: firstAdmin.password });
-            } catch (e) {
-              window.alert(e.message);
-            }
+        if (created && firstAdmin.username && firstAdmin.password) {
+          try {
+            await this.createAdminAccount({ ...created, adminUsername: firstAdmin.username, adminPassword: firstAdmin.password });
+          } catch (e) {
+            window.alert(e.message);
           }
-          await this.selectCompany(created);
         }
       } catch (e) { alert(e.message); }
     },
@@ -314,7 +386,7 @@ const App = {
     }
   },
   async created() {
-    await this.loadLoginCompanies();
+    await this.loadCompanies();
     const token = localStorage.getItem('muhasib_token');
     if (token) {
       try {
@@ -332,6 +404,7 @@ const App = {
       setActiveCompanyId(null);
       this.authUser = null;
       this.activeCompany = null;
+      this.loadCompanies();
     });
     if (!this.authUser) return;
     await this.enterAfterLogin();

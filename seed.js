@@ -120,6 +120,7 @@ function seedCompany(data, setup) {
 seedCompany({
   name: 'شركة الأفق للاستشارات المالية', business_type: 'corporate',
   cr_number: '1010456789', vat_number: '310123456700003', vat_rate: 15,
+  fiscal_year_start_date: '2026-01-01', fiscal_year_end_date: '2026-12-31',
   address: 'الرياض - حي العليا', phone: '0112345678', email: 'info@ofoq.sa'
 }, (db, year, inv) => {
   const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });
@@ -151,6 +152,7 @@ seedCompany({
 seedCompany({
   name: 'سوبر ماركت الخير للمواد الغذائية', business_type: 'supermarket',
   cr_number: '2050456789', vat_number: '310555666700003', vat_rate: 15,
+  fiscal_year_start_date: '2026-01-01', fiscal_year_end_date: '2026-12-31',
   address: 'جدة - حي الروضة', phone: '0123456789', email: 'sales@alkhair.sa'
 }, (db, year, inv) => {
   const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });
@@ -235,6 +237,7 @@ seedCompany({
 seedCompany({
   name: 'مصنع النور للصناعات الغذائية', business_type: 'factory',
   cr_number: '2055678123', vat_number: '310111222333003', vat_rate: 15,
+  fiscal_year_start_date: '2026-01-01', fiscal_year_end_date: '2026-12-31',
   address: 'الدمام - المنطقة الصناعية الثانية', phone: '0138456789', email: 'info@alnoor-factory.sa'
 }, (db, year, inv) => {
   const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });
@@ -286,6 +289,7 @@ seedCompany({
 seedCompany({
   name: 'مخبر المستقبل الطبي للتحاليل', business_type: 'medical_lab',
   cr_number: '4030456789', vat_number: '310222333444003', vat_rate: 15,
+  fiscal_year_start_date: '2026-01-01', fiscal_year_end_date: '2026-12-31',
   address: 'الرياض - حي السليمانية', phone: '0114587896', email: 'care@almustaqbal-lab.sa'
 }, (db, year, inv) => {
   const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });
@@ -319,6 +323,7 @@ seedCompany({
 seedCompany({
   name: 'مستشفى الحياة التخصصي', business_type: 'hospital',
   cr_number: '4030123456', vat_number: '310999888777003', vat_rate: 15,
+  fiscal_year_start_date: '2026-01-01', fiscal_year_end_date: '2026-12-31',
   address: 'الرياض - حي النرجس', phone: '0115566778', email: 'care@alhayah-hospital.sa'
 }, (db, year, inv) => {
   const j = (date, desc, lines) => accounting.createJournalEntry(db, { date, description: desc, fiscal_year_id: year.id, lines });

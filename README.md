@@ -34,15 +34,22 @@ node server.js
 
 Then open `http://localhost:3001`.
 
-- Platform admin account (no company): **admin / admin123** — use it to create companies and appoint each company's admin.
-- Demo company admin (per company): **admin / admin123** — on the login screen choose the company, then sign in to manage it.
-- Demo cashier (supermarket company only): **cashier / cashier123** — choose the supermarket company, then sign in.
+Opening the app shows the **public company registry**: a data grid of all companies (name, activity, CR, tax number, fiscal-year start/end, creation date) with action buttons. No sign-in is needed to view the list:
+
+- **Create new company**, **Edit**, **Delete** and **Add admin** each open a platform-admin sign-in dialog first; after authentication the corresponding window opens. Deletion removes the company and its database files permanently.
+- **Open** opens a company sign-in dialog; the company's admin or any of its users signs in and enters that company only.
+
+Default accounts:
+
+- Platform admin account (no company): **admin / admin123** — creates companies, assigns their admins, edits company data, and deletes companies.
+- Demo company admin (per company): **admin / admin123** — use the **Open** button on the company row, then sign in to manage it.
+- Demo cashier (supermarket company only): **cashier / cashier123** — use **Open** on the supermarket row, then sign in.
 
 ## Usage
 
-> The **platform admin** manages the company registry (steps 1-2) from the Platform Dashboard. Each **company admin** then signs in to its own company to run its business (steps 3-7). A company admin cannot see or manage any other company.
+> The **platform admin** manages the company registry (steps 1-2) from the company registry page. Each **company admin** then signs in to its own company to run its business (steps 3-7). A company admin cannot see or manage any other company.
 
-1. Create a company (name, activity type, CR number, VAT number, tax rate, fiscal year start month) and appoint its first admin.
+1. Create a company (name, activity type, CR number, VAT number, tax rate, fiscal year start/end dates) and appoint its first admin.
 2. Review the auto-generated chart of accounts for the selected activity.
 3. Record journal entries, invoices, customers, and suppliers.
 4. Review reports (trial balance, income statement, balance sheet, VAT report).
