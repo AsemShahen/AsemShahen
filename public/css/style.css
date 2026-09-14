@@ -47,7 +47,7 @@ html, body {
 .brand-banner .brand-sub { font-size: 13px; opacity: .8; margin-top: 6px; }
 
 .company-screen-body {
-  max-width: 1000px;
+  max-width: 1500px;
   margin: 0 auto;
   padding: 30px 20px 60px;
   text-align: center;
@@ -79,7 +79,7 @@ html, body {
   flex-wrap: wrap; margin-bottom: 16px; text-align: right;
 }
 .company-toolbar .muted { font-size: 13px; }
-.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.row-actions { display: flex; gap: 6px; flex-wrap: nowrap; }
 .company-screen-body .table-wrap {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); text-align: right;
