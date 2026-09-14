@@ -68,7 +68,6 @@
                   <div class="row-actions">
                     <button class="btn btn-sm btn-primary" @click="requestAction('open', c)">{{ t('فتح') }}</button>
                     <button class="btn btn-sm btn-ghost" @click="requestAction('edit', c)">{{ t('تعديل') }}</button>
-                    <button class="btn btn-sm btn-ghost" @click="requestAction('admin', c)">{{ t('إضافة مدير') }}</button>
                     <button class="btn btn-sm btn-danger" @click="requestAction('delete', c)">{{ t('حذف') }}</button>
                   </div>
                 </td>
@@ -143,16 +142,18 @@
             <label>{{ t('البريد الإلكتروني') }}
               <input v-model.trim="newCompany.email" placeholder="info@company.com" dir="ltr">
             </label>
-            <label>{{ t('اسم مستخدم مدير الشركة (اختياري)') }}
+            <label>{{ t('اسم مستخدم مدير الشركة') }}
               <input v-model.trim="newCompany.adminUsername" dir="ltr" placeholder="manager">
             </label>
-            <label>{{ t('كلمة مرور مدير الشركة (اختياري)') }}
-              <input v-model="newCompany.adminPassword" dir="ltr" placeholder="4 أحرف على الأقل">
+            <label>{{ t('كلمة مرور مدير الشركة') }}
+              <input type="password" v-model="newCompany.adminPassword" dir="ltr" placeholder="4 أحرف على الأقل">
             </label>
           </div>
           <div class="modal-actions">
             <button class="btn btn-ghost" @click="openCreateCompany = false">{{ t('إلغاء') }}</button>
-            <button class="btn btn-primary" @click="createCompany" :disabled="!newCompany.name">{{ t('إنشاء الشركة') }}</button>
+            <button class="btn btn-primary" @click="createCompany" :disabled="!newCompany.name || !newCompany.adminUsername || newCompany.adminPassword.length < 4">
+              {{ t('إنشاء الشركة وتعيين مديرها') }}
+            </button>
           </div>
         </div>
       </div>
@@ -214,28 +215,6 @@
             <button class="btn btn-ghost" @click="deleteTarget = null">{{ t('إلغاء') }}</button>
             <button class="btn btn-danger" @click="confirmDeleteCompany" :disabled="deletingCompany">
               {{ deletingCompany ? t('جارٍ الحذف...') : t('حذف نهائي') }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- مودال تعيين مدير شركة -->
-      <div v-if="openAddAdmin" class="modal-overlay" tabindex="-1" @click.self="openAddAdmin = false" @keydown.esc="openAddAdmin = false">
-        <div class="modal" style="max-width:460px;">
-          <h3>{{ t('تعيين مدير للشركة') }}</h3>
-          <p class="muted mb-2">{{ adminTarget ? adminTarget.name : '' }}</p>
-          <div class="form-grid">
-            <label>{{ t('اسم المستخدم') }}
-              <input v-model.trim="addAdminForm.username" dir="ltr" placeholder="manager">
-            </label>
-            <label>{{ t('كلمة المرور') }}
-              <input v-model="addAdminForm.password" dir="ltr" placeholder="4 أحرف على الأقل">
-            </label>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" @click="openAddAdmin = false">{{ t('إلغاء') }}</button>
-            <button class="btn btn-primary" @click="saveAdmin" :disabled="addingAdmin || !addAdminForm.username || !addAdminForm.password">
-              {{ addingAdmin ? t('جارٍ الحفظ...') : t('حفظ') }}
             </button>
           </div>
         </div>
@@ -338,6 +317,6 @@
   <script src="/js/views-closing.js?v=20"></script>
   <script src="/js/views-users.js?v=20"></script>
   <script src="/js/views-hospital.js?v=20"></script>
-  <script src="/js/app.js?v=20"></script>
+  <script src="/js/app.js?v=21"></script>
 </body>
 </html>

@@ -59,12 +59,7 @@ const App = {
       savingCompany: false,
       // حذف شركة
       deleteTarget: null,
-      deletingCompany: false,
-      // تعيين مدير
-      openAddAdmin: false,
-      adminTarget: null,
-      addAdminForm: { username: '', password: '' },
-      addingAdmin: false
+      deletingCompany: false
     };
   },
   computed: {
@@ -74,7 +69,6 @@ const App = {
       if (this.loginModal.action === 'create') return t('تسجيل دخول مدير المنصة — إنشاء شركة');
       if (this.loginModal.action === 'edit') return t('تسجيل دخول مدير المنصة — تعديل شركة');
       if (this.loginModal.action === 'delete') return t('تسجيل دخول مدير المنصة — حذف شركة');
-      if (this.loginModal.action === 'admin') return t('تسجيل دخول مدير المنصة — إضافة مدير');
       return t('تسجيل الدخول');
     },
     isCompanyAdminOfActive() {
@@ -168,7 +162,6 @@ const App = {
       if (this.isPlatform) {
         if (action === 'edit') this.openEdit(company);
         else if (action === 'delete') this.deleteTarget = company;
-        else if (action === 'admin') this.openAssignAdmin(company);
         else if (action === 'open') this.selectCompany(company);
         return;
       }
@@ -191,7 +184,7 @@ const App = {
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || t('فشل تسجيل الدخول'));
-        const adminActions = ['create', 'edit', 'delete', 'admin'];
+        const adminActions = ['create', 'edit', 'delete'];
         if (adminActions.includes(m.action) && data.user.role !== 'platform') {
           try { await apiFetch('/api/logout', { method: 'POST', headers: { 'x-auth-token': data.token } }); } catch (e) { /* تجاهل */ }
           throw new Error(t('هذه العملية تتطلب حساب مدير المنصة'));
@@ -212,7 +205,6 @@ const App = {
           if (action === 'create') { this.resetNewCompany(); this.openCreateCompany = true; }
           else if (action === 'edit') await this.openEdit(company);
           else if (action === 'delete') this.deleteTarget = company;
-          else if (action === 'admin') this.openAssignAdmin(company);
         }
       } catch (e) {
         m.error = e.message;
@@ -326,6 +318,10 @@ const App = {
       } catch (e) { console.error(e); }
     },
     async createCompany() {
+      if (!this.newCompany.name || !this.newCompany.adminUsername || this.newCompany.adminPassword.length < 4) {
+        window.alert(t('يجب إدخال اسم الشركة واسم مستخدم المدير وكلمة مرور من 4 أحرف على الأقل'));
+        return;
+      }
       try {
         const r = await apiFetch('/api/companies', {
           method: 'POST',
@@ -335,54 +331,22 @@ const App = {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || t('خطأ'));
         const created = data.company;
-        const firstAdmin = {
-          username: this.newCompany.adminUsername,
-          password: this.newCompany.adminPassword
-        };
+        await this.createAdminAccount(created.id, this.newCompany.adminUsername, this.newCompany.adminPassword);
         this.openCreateCompany = false;
         this.resetNewCompany();
         await this.loadCompanies();
-        if (created && firstAdmin.username && firstAdmin.password) {
-          try {
-            await this.createAdminAccount({ ...created, adminUsername: firstAdmin.username, adminPassword: firstAdmin.password });
-          } catch (e) {
-            window.alert(e.message);
-          }
-        }
-      } catch (e) { alert(e.message); }
+        window.alert(t('تم إنشاء الشركة وتعيين مديرها'));
+      } catch (e) { window.alert(e.message); }
     },
-    openAssignAdmin(c) {
-      this.adminTarget = c;
-      this.addAdminForm = { username: '', password: '' };
-      this.openAddAdmin = true;
-    },
-    async createAdminAccount(company) {
-      const body = {
-        username: this.addAdminForm.username || company.adminUsername,
-        password: this.addAdminForm.password || company.adminPassword,
-        role: 'admin'
-      };
-      const r = await apiFetch(`/api/companies/${company.id}/users`, {
+    async createAdminAccount(companyId, username, password) {
+      const r = await apiFetch(`/api/companies/${companyId}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ username, password, role: 'admin' })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || t('خطأ'));
       return data;
-    },
-    async saveAdmin() {
-      if (!this.adminTarget) return;
-      this.addingAdmin = true;
-      try {
-        await this.createAdminAccount(this.adminTarget);
-        alert(t('تم إنشاء مدير الشركة'));
-      } catch (e) {
-        alert(e.message);
-      } finally {
-        this.addingAdmin = false;
-        this.openAddAdmin = false;
-      }
     }
   },
   async created() {
