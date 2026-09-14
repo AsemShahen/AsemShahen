@@ -136,7 +136,8 @@ function companyUserTarget(req, res, next) {
 }
 
 app.get('/api/companies/:companyId/permission-model', companyUsersPerm, (req, res) => {
-  res.json({ windows: usersLib.WINDOWS, actions: usersLib.ACTIONS });
+  const company = getCompany(Number(req.params.companyId));
+  res.json({ windows: usersLib.windowsFor(company && company.business_type), actions: usersLib.ACTIONS });
 });
 
 app.get('/api/companies/:companyId/users', companyUsersPerm, (req, res) => {
