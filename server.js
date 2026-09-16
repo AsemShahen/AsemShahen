@@ -1194,14 +1194,14 @@ app.delete('/api/companies/:companyId/warehouses/:whId', windowPerm('warehouses'
 app.get('/api/companies/:companyId/products', windowPerm('products', 'view'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  res.json(inventoryLib.listProducts(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1' }));
+  res.json(inventoryLib.listProducts(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1', manufacturedOnly: req.query.manufactured === '1' }));
   ctx.db.close();
 });
 
 app.get('/api/companies/:companyId/products/barcode/:code', windowPerm('products', 'view'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  const p = inventoryLib.findByBarcode(ctx.db, req.params.code);
+  const p = inventoryLib.findByBarcode(ctx.db, req.params.code, { manufacturedOnly: req.query.manufactured === '1' });
   ctx.db.close();
   if (!p) return res.status(404).json({ error: 'لا يوجد منتج بهذا الباركود' });
   res.json(p);

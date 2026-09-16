@@ -659,9 +659,10 @@ const PosView = {
   methods: {
     async load() {
       try {
+        const posQuery = (this.company.business_type === 'restaurant') ? '?manufactured=1' : '';
         const [warehouses, products, methods] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/warehouses`),
-          this.api(`/api/companies/${this.company.id}/products`),
+          this.api(`/api/companies/${this.company.id}/products${posQuery}`),
           this.api(`/api/companies/${this.company.id}/payment-methods`)
         ]);
         this.warehouses = warehouses;
@@ -684,7 +685,8 @@ const PosView = {
       this.barcodeInput = '';
       let product = this.products.find(p => p.barcode && p.barcode === code);
       if (!product) {
-        try { product = await this.api(`/api/companies/${this.company.id}/products/barcode/${encodeURIComponent(code)}`); }
+        const posQuery = (this.company.business_type === 'restaurant') ? '?manufactured=1' : '';
+        try { product = await this.api(`/api/companies/${this.company.id}/products/barcode/${encodeURIComponent(code)}${posQuery}`); }
         catch (e) { this.toast(t('لا يوجد منتج بهذا الباركود: {code}', { code }), 'error'); return; }
       }
       this.addToCart(product);
