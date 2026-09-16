@@ -7,17 +7,18 @@ An integrated Arabic (RTL) accounting and business management system operating i
 ## Features
 
 - **Multi-Company**: Each company has its own database file (`company_<id>.db`), and each account belongs to exactly one company. The platform admin (created at install) provisions companies and audits them, while every company is administered independently by its own company admin.
-- **Activity-Based Chart of Accounts**: Pre-configured charts for corporate, supermarket, factory, medical lab, and hospital businesses.
+- **Activity-Based Chart of Accounts**: Pre-configured charts for corporate, supermarket, factory, medical lab, hospital, and restaurant/cafe businesses.
 - **Saudi VAT (15%)**: VAT reports by period, with accounts 1401 (input VAT) and 2103 (output VAT).
 - **ZATCA E-Invoicing**: Generates compliant e-invoices for the Saudi ZATCA (TLV QR code + UBL 2.1 XML with SHA-256 hashing and ECDSA P-256 signing), with automatic submission (Report / Clearance) on every sale invoice.
 - **Common Payment Methods**: Cash, Mada, Credit Card, Bank Transfer, SADAD, Apple Pay, STC Pay, Check, Credit, and more.
 - **Core Accounting**: Journal entries, general ledger, trial balance, income statement, balance sheet, and VAT reports.
 - **Invoicing**: Sales & purchase invoices with automatic journal posting, partial payments, and credit collection for customers and suppliers.
 - **Fiscal Year Closing**: Automatic closing entry + opening entry, carrying balances into the new fiscal year.
-- **Inventory & Warehouses**: Products with barcodes, multi-warehouse stock, stock movements, stock counts with automatic shortage/surplus entries, and a **Point of Sale (POS)** screen with barcode scanning.
+- **Inventory & Warehouses**: Products with barcodes, multi-warehouse stock, stock movements, stock counts with automatic shortage/surplus entries, and a **Point of Sale (POS)** screen with barcode scanning. For restaurants/cafes the POS lists only manufactured meals (products with a recipe).
 - **Human Resources (HR)**: Departments, employees, attendance, leave management (approve/reject), and monthly payroll generation with automatic journal posting (debit 5201 / credit 2104).
 - **Hospital Module** (for hospitals): Patients, doctors & departments, appointments, medical records, and patient billing.
-- **Company-Scoped Roles & Permissions**: Three roles — `platform` (provisions companies and audits them read-only), `admin` (full control inside its own company only), and `user` (per-window permissions inside its own company). No account can ever reach another company's data.
+- **Restaurants & Cafes — Recipes & Costing** (for restaurants/cafes): define a **recipe (BOM)** for each meal linking the finished product to its raw ingredients with quantities and wastage, get an automatic portion/batch cost and profit margin, and issue **production orders** that consume ingredients from the warehouse, add the finished meal, and update its cost (the basis for cost of goods sold). Meals with insufficient finished stock are **produced automatically at the moment of sale**.
+- **Company-Scoped Roles & Permissions**: Three roles — `platform` (provisions companies and audits them read-only), `admin` (full control inside its own company only), and `user` (per-window permissions inside its own company). Permission windows are limited to the company's activity type (e.g. hospital windows only for hospitals, inventory/POS for goods activities, and recipes/production only for restaurants/cafes). No account can ever reach another company's data.
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
 - **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the company admin only, with every action recorded in the audit log.
@@ -36,7 +37,7 @@ Then open `http://localhost:3001`.
 
 Opening the app shows the **public company registry**: a data grid of all companies (name, activity, CR, tax number, fiscal-year start/end, creation date) with action buttons. No sign-in is needed to view the list:
 
-- **Create new company**, **Edit**, **Delete** and **Add admin** each open a platform-admin sign-in dialog first; after authentication the corresponding window opens. Deletion removes the company and its database files permanently.
+- **Create new company**, **Edit** and **Delete** each open a platform-admin sign-in dialog first; after authentication the corresponding window opens. Creating a company also creates its first admin account; additional admins can be added later from **Users & Permissions** inside the company. Deletion removes the company and its database files permanently.
 - **Open** opens a company sign-in dialog; the company's admin or any of its users signs in and enters that company only.
 
 Default accounts:
@@ -53,7 +54,7 @@ Default accounts:
 2. Review the auto-generated chart of accounts for the selected activity.
 3. Record journal entries, invoices, customers, and suppliers.
 4. Review reports (trial balance, income statement, balance sheet, VAT report).
-5. Manage warehouses, products, stock counts, and sell through the POS.
+5. Manage warehouses, products, stock counts, and sell through the POS. For restaurants/cafes, define recipes and produce meals; their POS lists only manufactured meals.
 6. Manage HR: employees, attendance, leaves, and monthly payroll.
 7. At year end: close the fiscal year and start a new one automatically.
 
@@ -85,6 +86,8 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 | `lib/chat.js` | Internal chat: channels, members, messages, files, calls + audit log |
 | `public/js/views-chat.js` | Internal chat UI (conversation list, threads, voice recorder, calls) |
 | `lib/hospital.js` | Hospital module |
+| `lib/restaurant.js` | Restaurant/cafe recipes (BOM), costing, and production orders |
+| `public/js/views-restaurant.js` | Restaurant/cafe UI (recipes & production) |
 | `lib/db-tools.js` | DB backup / restore / compress / repair |
 | `lib/zatca/` | ZATCA e-invoicing (QR + XML + signing + submission) |
 | `seed.js` | Demo data for 5 companies |
@@ -92,7 +95,7 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 
 ## UI Overview
 
-All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Employees & Departments, Leaves, Payroll, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
+All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Employees & Departments, Leaves, Payroll, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
 
 ## Internal Chat
 
@@ -107,7 +110,7 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 
 ## Settings Tabs
 
-- **Company Data**: company name, VAT rate, CR number, tax number, currency, fiscal year start month, address, phone and email.
+- **Company Data**: company name, VAT rate, CR number, tax number, currency, fiscal year start/end dates, address, phone and email.
 - **ZATCA E-Invoicing**: enable automatic submission, choose Sandbox/Production mode, and store CSID credentials, private key (PEM), certificate and OTP.
 - **Databases** (admin only): create a backup now, download / restore backups (from the list or by uploading a `.db` file), compress the database, and repair it. An automatic safety backup is created before every restore.
 - **WhatsApp**: enable WhatsApp sending, set the business number and optional WhatsApp Business Cloud API credentials (Phone Number ID + Access Token), and edit the message templates for sales invoices, purchase invoices, POS receipts and account statements.
