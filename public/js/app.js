@@ -21,6 +21,8 @@ const NAV_ITEMS = [
   { key: 'stock', label: 'المخزون والأرصدة', icon: '📊', perm: 'inventory' },
   { key: 'stock-counts', label: 'الجرد', icon: '🗒️', perm: 'inventory' },
   { key: 'pos', label: 'نقطة البيع', icon: '🛒' },
+  { key: 'recipes', label: 'الوصفات والتكاليف', icon: '📖', restaurantOnly: true },
+  { key: 'production', label: 'التصنيع والإنتاج', icon: '🏭', restaurantOnly: true },
   { key: 'hr-employees', label: 'الموظفون والأقسام', icon: '👔' },
   { key: 'hr-leaves', label: 'الإجازات', icon: '🏖️' },
   { key: 'hr-payroll', label: 'الرواتب والأجور', icon: '💰' },
@@ -97,6 +99,8 @@ const App = {
         'stock': StockView,
         'stock-counts': StockCountsView,
         'pos': PosView,
+        'recipes': RecipesView,
+        'production': ProductionView,
         'hr-employees': HrEmployeesView,
         'hr-leaves': HrLeavesView,
         'hr-payroll': HrPayrollView,
@@ -120,9 +124,11 @@ const App = {
     },
     navItems() {
       const isHospital = this.activeCompany && this.activeCompany.business_type === 'hospital';
+      const isRestaurant = this.activeCompany && this.activeCompany.business_type === 'restaurant';
       const platform = this.isPlatform;
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
+        if (i.restaurantOnly) return isRestaurant;
         if (platform) {
           // مدير المنصة يدقق (قراءة فقط) ويشارك في محادثة الشركة التي يدخلها
           if (i.key === 'users') return false;

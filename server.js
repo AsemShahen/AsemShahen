@@ -12,6 +12,7 @@ const zatcaLib = require('./lib/zatca');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
+const restaurantLib = require('./lib/restaurant');
 const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
@@ -236,7 +237,8 @@ app.get('/api/company-types', (req, res) => {
     supermarket: chartsLib.typeLabel('supermarket'),
     factory: chartsLib.typeLabel('factory'),
     medical_lab: chartsLib.typeLabel('medical_lab'),
-    hospital: chartsLib.typeLabel('hospital')
+    hospital: chartsLib.typeLabel('hospital'),
+    restaurant: chartsLib.typeLabel('restaurant')
   }).map(t => ({ code: t, label: chartsLib.typeLabel(t) }));
   res.json({ types });
 });
@@ -1330,6 +1332,110 @@ app.post('/api/companies/:companyId/pos/sell', windowPerm('pos', 'add'), async (
     ctx.db.close();
     res.status(400).json({ error: e.message });
   }
+});
+
+// ==================== نظام المطاعم والكفيهات (الوصفات والتكاليف والتصنيع) ====================
+
+app.get('/api/companies/:companyId/restaurant/summary', windowPerm('recipes', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(restaurantLib.summary(ctx.db));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/restaurant/recipes', windowPerm('recipes', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(restaurantLib.listRecipes(ctx.db, { search: req.query.search }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/restaurant/products', windowPerm('recipes', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listProducts(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1' }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/restaurant/warehouses', windowPerm('production', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listWarehouses(ctx.db));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/restaurant/recipes/:recipeId', windowPerm('recipes', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const recipe = restaurantLib.getRecipe(ctx.db, Number(req.params.recipeId));
+  ctx.db.close();
+  if (!recipe) return res.status(404).json({ error: 'الوصفة غير موجودة' });
+  res.json(recipe);
+});
+
+app.post('/api/companies/:companyId/restaurant/recipes', windowPerm('recipes', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(restaurantLib.createRecipe(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/restaurant/recipes/:recipeId', windowPerm('recipes', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const recipe = restaurantLib.updateRecipe(ctx.db, Number(req.params.recipeId), req.body);
+    if (!recipe) { ctx.db.close(); return res.status(404).json({ error: 'الوصفة غير موجودة' }); }
+    res.json(recipe);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/restaurant/recipes/:recipeId', windowPerm('recipes', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const ok = restaurantLib.deleteRecipe(ctx.db, Number(req.params.recipeId));
+    if (!ok) { ctx.db.close(); return res.status(404).json({ error: 'الوصفة غير موجودة' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/restaurant/production', windowPerm('production', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(restaurantLib.listProductionOrders(ctx.db, { productId: req.query.product_id, limit: Number(req.query.limit) || 300 }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/restaurant/production/:orderId', windowPerm('production', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const order = restaurantLib.getProductionOrder(ctx.db, Number(req.params.orderId));
+  ctx.db.close();
+  if (!order) return res.status(404).json({ error: 'أمر التصنيع غير موجود' });
+  res.json(order);
+});
+
+app.post('/api/companies/:companyId/restaurant/production', windowPerm('production', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    res.json(restaurantLib.produce(ctx.db, { ...req.body, recipe_id: Number(req.body.recipe_id), fiscal_year_id: fy.id }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/restaurant/production/:orderId/cancel', windowPerm('production', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(restaurantLib.cancelProductionOrder(ctx.db, Number(req.params.orderId))); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
 });
 
 // ==================== نظام الموارد البشرية ====================
