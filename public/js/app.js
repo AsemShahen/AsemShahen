@@ -31,7 +31,13 @@ const NAV_ITEMS = [
   { key: 'hosp-doctors', label: 'الأطباء والأقسام', icon: '🩺', hospitalOnly: true },
   { key: 'hosp-appointments', label: 'المواعيد', icon: '📅', hospitalOnly: true },
   { key: 'hosp-records', label: 'السجلات الطبية', icon: '📋', hospitalOnly: true },
-  { key: 'hosp-billing', label: 'فوترة المرضى', icon: '🧾', hospitalOnly: true }
+  { key: 'hosp-billing', label: 'فوترة المرضى', icon: '🧾', hospitalOnly: true },
+  { key: 'hotel-dashboard', label: 'لوحة الفندق', icon: '🏨', hotelOnly: true },
+  { key: 'hotel-rooms', label: 'الغرف والوحدات', icon: '🛏️', hotelOnly: true },
+  { key: 'hotel-guests', label: 'سجل النزلاء', icon: '🧑', hotelOnly: true },
+  { key: 'hotel-bookings', label: 'الحجوزات', icon: '📅', hotelOnly: true },
+  { key: 'hotel-services', label: 'الخدمات الفندقية', icon: '🛎️', hotelOnly: true },
+  { key: 'hotel-billing', label: 'حسابات النزلاء والفوترة', icon: '🧾', hotelOnly: true }
 ];
 
 const { createApp } = Vue;
@@ -109,7 +115,13 @@ const App = {
         'hosp-doctors': HospitalDoctorsView,
         'hosp-appointments': HospitalAppointmentsView,
         'hosp-records': HospitalRecordsView,
-        'hosp-billing': HospitalBillingView
+        'hosp-billing': HospitalBillingView,
+        'hotel-dashboard': HotelDashboardView,
+        'hotel-rooms': HotelRoomsView,
+        'hotel-guests': HotelGuestsView,
+        'hotel-bookings': HotelBookingsView,
+        'hotel-services': HotelServicesView,
+        'hotel-billing': HotelBillingView
       };
       return map[this.view] || DashboardView;
     },
@@ -125,10 +137,12 @@ const App = {
     navItems() {
       const isHospital = this.activeCompany && this.activeCompany.business_type === 'hospital';
       const isRestaurant = this.activeCompany && this.activeCompany.business_type === 'restaurant';
+      const isHotel = this.activeCompany && this.activeCompany.business_type === 'hotel';
       const platform = this.isPlatform;
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
         if (i.restaurantOnly) return isRestaurant;
+        if (i.hotelOnly) return isHotel;
         if (platform) {
           // مدير المنصة يدقق (قراءة فقط) ويشارك في محادثة الشركة التي يدخلها
           if (i.key === 'users') return false;

@@ -50,7 +50,8 @@ const typesMeta = {
   factory: { icon: '🏭', label: 'مصنع' },
   medical_lab: { icon: '🔬', label: 'مخبر طبي' },
   hospital: { icon: '🏥', label: 'مستشفى' },
-  restaurant: { icon: '🍽️', label: 'مطعم / كافيه' }
+  restaurant: { icon: '🍽️', label: 'مطعم / كافيه' },
+  hotel: { icon: '🏨', label: 'فندق / شقق مفروشة' }
 };
 
 function typeIcon(type) { return (typesMeta[type] || typesMeta.corporate).icon; }

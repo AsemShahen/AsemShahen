@@ -13,6 +13,7 @@ const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
 const restaurantLib = require('./lib/restaurant');
+const hotelLib = require('./lib/hotel');
 const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
@@ -46,6 +47,15 @@ function windowPerm(windowKey, action = 'view') {
   return (req, res, next) => {
     const companyId = Number(req.params.companyId);
     if (usersLib.hasPerm(req.user, companyId, windowKey, action)) return next();
+    return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' });
+  };
+}
+
+// يقبل أي واحدة من عدة نوافذ (مفيد للنوافذ المشتركة بين شاشات مترابطة)
+function anyWindowPerm(windowKeys, action = 'view') {
+  return (req, res, next) => {
+    const companyId = Number(req.params.companyId);
+    if (windowKeys.some(k => usersLib.hasPerm(req.user, companyId, k, action))) return next();
     return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' });
   };
 }
@@ -238,7 +248,8 @@ app.get('/api/company-types', (req, res) => {
     factory: chartsLib.typeLabel('factory'),
     medical_lab: chartsLib.typeLabel('medical_lab'),
     hospital: chartsLib.typeLabel('hospital'),
-    restaurant: chartsLib.typeLabel('restaurant')
+    restaurant: chartsLib.typeLabel('restaurant'),
+    hotel: chartsLib.typeLabel('hotel')
   }).map(t => ({ code: t, label: chartsLib.typeLabel(t) }));
   res.json({ types });
 });
@@ -1952,6 +1963,281 @@ app.get('/api/companies/:companyId/hospital/dashboard', windowPerm('hosp-dashboa
   if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
   res.json(hospitalLib.hospitalDashboard(ctx.db, fy.id));
   ctx.db.close();
+});
+
+// ==================== نظام الفنادق والضيافة (فندق / شقق مفروشة) ====================
+
+// ---------- لوحة الفندق ----------
+app.get('/api/companies/:companyId/hotel/dashboard', windowPerm('hotel-dashboard', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+  if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+  res.json(hotelLib.hotelDashboard(ctx.db, fy.id));
+  ctx.db.close();
+});
+
+// ---------- أنواع الوحدات ----------
+app.get('/api/companies/:companyId/hotel/room-types', windowPerm('hotel-rooms', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hotelLib.listRoomTypes(ctx.db, req.query.all === '1'));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hotel/room-types', windowPerm('hotel-rooms', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.createRoomType(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hotel/room-types/:typeId', windowPerm('hotel-rooms', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const rt = hotelLib.updateRoomType(ctx.db, Number(req.params.typeId), req.body);
+    if (!rt) { ctx.db.close(); return res.status(404).json({ error: 'نوع الوحدة غير موجود' }); }
+    res.json(rt);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/room-types/:typeId', windowPerm('hotel-rooms', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hotelLib.deleteRoomType(ctx.db, Number(req.params.typeId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الغرف والوحدات ----------
+app.get('/api/companies/:companyId/hotel/rooms', windowPerm('hotel-rooms', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hotelLib.listRooms(ctx.db, { status: req.query.status, roomTypeId: req.query.room_type_id, search: req.query.search }));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hotel/rooms', windowPerm('hotel-rooms', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.createRoom(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hotel/rooms/:roomId', windowPerm('hotel-rooms', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const room = hotelLib.updateRoom(ctx.db, Number(req.params.roomId), req.body);
+    if (!room) { ctx.db.close(); return res.status(404).json({ error: 'الغرفة/الوحدة غير موجودة' }); }
+    res.json(room);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/rooms/:roomId', windowPerm('hotel-rooms', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hotelLib.deleteRoom(ctx.db, Number(req.params.roomId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hotel/rooms/:roomId/status', windowPerm('hotel-rooms', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.setRoomStatus(ctx.db, Number(req.params.roomId), req.body.status)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- النزلاء ----------
+app.get('/api/companies/:companyId/hotel/guests', windowPerm('hotel-guests', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hotelLib.listGuests(ctx.db, req.query.search));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/hotel/guests/:guestId', windowPerm('hotel-guests', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const g = hotelLib.getGuest(ctx.db, Number(req.params.guestId));
+  ctx.db.close();
+  if (!g) return res.status(404).json({ error: 'النزيل غير موجود' });
+  res.json(g);
+});
+
+app.post('/api/companies/:companyId/hotel/guests', windowPerm('hotel-guests', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.createGuest(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hotel/guests/:guestId', windowPerm('hotel-guests', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const g = hotelLib.updateGuest(ctx.db, Number(req.params.guestId), req.body);
+    if (!g) { ctx.db.close(); return res.status(404).json({ error: 'النزيل غير موجود' }); }
+    res.json(g);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/guests/:guestId', windowPerm('hotel-guests', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hotelLib.deleteGuest(ctx.db, Number(req.params.guestId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الخدمات الفندقية ----------
+app.get('/api/companies/:companyId/hotel/services', anyWindowPerm(['hotel-services', 'hotel-billing']), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hotelLib.listServices(ctx.db, req.query.all === '1'));
+  ctx.db.close();
+});
+
+app.post('/api/companies/:companyId/hotel/services', windowPerm('hotel-services', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.createService(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hotel/services/:serviceId', windowPerm('hotel-services', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const s = hotelLib.updateService(ctx.db, Number(req.params.serviceId), req.body);
+    if (!s) { ctx.db.close(); return res.status(404).json({ error: 'الخدمة غير موجودة' }); }
+    res.json(s);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/services/:serviceId', windowPerm('hotel-services', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hotelLib.deleteService(ctx.db, Number(req.params.serviceId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- الحجوزات ----------
+app.get('/api/companies/:companyId/hotel/bookings', windowPerm('hotel-bookings', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(hotelLib.listBookings(ctx.db, {
+    status: req.query.status, roomId: req.query.room_id, search: req.query.search,
+    from: req.query.from, to: req.query.to, limit: Number(req.query.limit) || 500
+  }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/hotel/bookings/:bookingId', anyWindowPerm(['hotel-bookings', 'hotel-billing']), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const b = hotelLib.getBooking(ctx.db, Number(req.params.bookingId));
+  ctx.db.close();
+  if (!b) return res.status(404).json({ error: 'الحجز غير موجود' });
+  res.json(b);
+});
+
+app.post('/api/companies/:companyId/hotel/bookings', windowPerm('hotel-bookings', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(hotelLib.createBooking(ctx.db, { ...req.body, fiscal_year_id: fy ? fy.id : null }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/hotel/bookings/:bookingId', windowPerm('hotel-bookings', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const b = hotelLib.updateBooking(ctx.db, Number(req.params.bookingId), req.body);
+    if (!b) { ctx.db.close(); return res.status(404).json({ error: 'الحجز غير موجود' }); }
+    res.json(b);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/bookings/:bookingId', windowPerm('hotel-bookings', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const ok = hotelLib.deleteBooking(ctx.db, Number(req.params.bookingId));
+    if (!ok) { ctx.db.close(); return res.status(404).json({ error: 'الحجز غير موجود' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hotel/bookings/:bookingId/check-in', windowPerm('hotel-bookings', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.checkIn(ctx.db, Number(req.params.bookingId), req.body || {})); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hotel/bookings/:bookingId/cancel', windowPerm('hotel-bookings', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.cancelBooking(ctx.db, Number(req.params.bookingId))); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- حساب النزيل: بنود ودفعات وتسجيل خروج ----------
+app.post('/api/companies/:companyId/hotel/bookings/:bookingId/charges', windowPerm('hotel-billing', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(hotelLib.addCharge(ctx.db, { ...req.body, booking_id: Number(req.params.bookingId) })); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/hotel/bookings/:bookingId/charges/:chargeId', windowPerm('hotel-billing', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { hotelLib.deleteCharge(ctx.db, Number(req.params.chargeId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hotel/bookings/:bookingId/payments', windowPerm('hotel-billing', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(hotelLib.addPayment(ctx.db, { ...req.body, booking_id: Number(req.params.bookingId), fiscal_year_id: fy ? fy.id : null }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/hotel/bookings/:bookingId/check-out', windowPerm('hotel-billing', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    if (!fy) { ctx.db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
+    res.json(hotelLib.checkOut(ctx.db, Number(req.params.bookingId), { ...req.body, fiscal_year_id: fy.id }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
 });
 
 // ==================== لوحة التحكم ====================
