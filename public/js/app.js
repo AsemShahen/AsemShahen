@@ -37,7 +37,12 @@ const NAV_ITEMS = [
   { key: 'hotel-guests', label: 'سجل النزلاء', icon: '🧑', hotelOnly: true },
   { key: 'hotel-bookings', label: 'الحجوزات', icon: '📅', hotelOnly: true },
   { key: 'hotel-services', label: 'الخدمات الفندقية', icon: '🛎️', hotelOnly: true },
-  { key: 'hotel-billing', label: 'حسابات النزلاء والفوترة', icon: '🧾', hotelOnly: true }
+  { key: 'hotel-billing', label: 'حسابات النزلاء والفوترة', icon: '🧾', hotelOnly: true },
+  { key: 'mfg-dashboard', label: 'لوحة التصنيع', icon: '🏭', factoryOnly: true },
+  { key: 'mfg-boms', label: 'قوائم التصنيع (BOM)', icon: '📋', factoryOnly: true },
+  { key: 'mfg-orders', label: 'أوامر التصنيع', icon: '⚙️', factoryOnly: true },
+  { key: 'mfg-expenses', label: 'مصروفات التصنيع', icon: '💰', factoryOnly: true },
+  { key: 'mfg-reports', label: 'تقارير التصنيع', icon: '📊', factoryOnly: true }
 ];
 
 const { createApp } = Vue;
@@ -121,7 +126,12 @@ const App = {
         'hotel-guests': HotelGuestsView,
         'hotel-bookings': HotelBookingsView,
         'hotel-services': HotelServicesView,
-        'hotel-billing': HotelBillingView
+        'hotel-billing': HotelBillingView,
+        'mfg-dashboard': ManufacturingDashboardView,
+        'mfg-boms': ManufacturingBomsView,
+        'mfg-orders': ManufacturingOrdersView,
+        'mfg-expenses': ManufacturingExpensesView,
+        'mfg-reports': ManufacturingReportsView
       };
       return map[this.view] || DashboardView;
     },
@@ -138,11 +148,13 @@ const App = {
       const isHospital = this.activeCompany && this.activeCompany.business_type === 'hospital';
       const isRestaurant = this.activeCompany && this.activeCompany.business_type === 'restaurant';
       const isHotel = this.activeCompany && this.activeCompany.business_type === 'hotel';
+      const isFactory = this.activeCompany && this.activeCompany.business_type === 'factory';
       const platform = this.isPlatform;
       return NAV_ITEMS.filter(i => {
         if (i.hospitalOnly) return isHospital;
         if (i.restaurantOnly) return isRestaurant;
         if (i.hotelOnly) return isHotel;
+        if (i.factoryOnly) return isFactory;
         if (platform) {
           // مدير المنصة يدقق (قراءة فقط) ويشارك في محادثة الشركة التي يدخلها
           if (i.key === 'users') return false;

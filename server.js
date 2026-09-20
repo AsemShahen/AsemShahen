@@ -14,6 +14,7 @@ const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
 const restaurantLib = require('./lib/restaurant');
 const hotelLib = require('./lib/hotel');
+const manufacturingLib = require('./lib/manufacturing');
 const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
@@ -1446,6 +1447,232 @@ app.post('/api/companies/:companyId/restaurant/production/:orderId/cancel', wind
   if (!ctx) return;
   try { res.json(restaurantLib.cancelProductionOrder(ctx.db, Number(req.params.orderId))); }
   catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ==================== نظام التصنيع للمصانع (BOM / أوامر التصنيع / المصروفات / التقارير) ====================
+
+const MFG_PERMS = ['mfg-dashboard', 'mfg-boms', 'mfg-orders', 'mfg-expenses', 'mfg-reports'];
+
+app.get('/api/companies/:companyId/manufacturing/summary', anyWindowPerm(MFG_PERMS, 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { manufacturingLib.ensureAccounts(ctx.db); res.json(manufacturingLib.summary(ctx.db)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/manufacturing/products', anyWindowPerm(MFG_PERMS, 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listProducts(ctx.db, { search: req.query.search, includeInactive: req.query.all === '1' }));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/manufacturing/warehouses', anyWindowPerm(MFG_PERMS, 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  res.json(inventoryLib.listWarehouses(ctx.db));
+  ctx.db.close();
+});
+
+app.get('/api/companies/:companyId/manufacturing/meta', anyWindowPerm(MFG_PERMS, 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    manufacturingLib.ensureAccounts(ctx.db);
+    res.json({
+      categories: manufacturingLib.EXPENSE_CATEGORIES,
+      payment_accounts: manufacturingLib.PAYMENT_ACCOUNTS
+    });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- قوائم التصنيع ----------
+app.get('/api/companies/:companyId/manufacturing/boms', windowPerm('mfg-boms', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { manufacturingLib.ensureAccounts(ctx.db); res.json(manufacturingLib.listBoms(ctx.db, { search: req.query.search, productId: req.query.product_id })); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/manufacturing/boms/:bomId', windowPerm('mfg-boms', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const bom = manufacturingLib.getBom(ctx.db, Number(req.params.bomId));
+  ctx.db.close();
+  if (!bom) return res.status(404).json({ error: 'قائمة التصنيع غير موجودة' });
+  res.json(bom);
+});
+
+app.get('/api/companies/:companyId/manufacturing/boms/:bomId/cost', windowPerm('mfg-boms', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const cost = manufacturingLib.calcBomCost(ctx.db, Number(req.params.bomId));
+  ctx.db.close();
+  if (!cost) return res.status(404).json({ error: 'قائمة التصنيع غير موجودة' });
+  res.json(cost);
+});
+
+app.post('/api/companies/:companyId/manufacturing/boms', windowPerm('mfg-boms', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { manufacturingLib.ensureAccounts(ctx.db); res.json(manufacturingLib.createBom(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/manufacturing/boms/:bomId', windowPerm('mfg-boms', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const bom = manufacturingLib.updateBom(ctx.db, Number(req.params.bomId), req.body);
+    if (!bom) { ctx.db.close(); return res.status(404).json({ error: 'قائمة التصنيع غير موجودة' }); }
+    res.json(bom);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/manufacturing/boms/:bomId', windowPerm('mfg-boms', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const ok = manufacturingLib.deleteBom(ctx.db, Number(req.params.bomId));
+    if (!ok) { ctx.db.close(); return res.status(404).json({ error: 'قائمة التصنيع غير موجودة' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- أوامر التصنيع ----------
+app.get('/api/companies/:companyId/manufacturing/orders', windowPerm('mfg-orders', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    res.json(manufacturingLib.listOrders(ctx.db, {
+      status: req.query.status, productId: req.query.product_id, search: req.query.search,
+      limit: Number(req.query.limit) || 300
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.get('/api/companies/:companyId/manufacturing/orders/:orderId', windowPerm('mfg-orders', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  const order = manufacturingLib.getOrder(ctx.db, Number(req.params.orderId));
+  ctx.db.close();
+  if (!order) return res.status(404).json({ error: 'أمر التصنيع غير موجود' });
+  res.json(order);
+});
+
+app.post('/api/companies/:companyId/manufacturing/orders', windowPerm('mfg-orders', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    manufacturingLib.ensureAccounts(ctx.db);
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(manufacturingLib.createOrder(ctx.db, {
+      ...req.body, bom_id: Number(req.body.bom_id), planned_qty: Number(req.body.planned_qty),
+      fiscal_year_id: fy ? fy.id : null
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/manufacturing/orders/:orderId', windowPerm('mfg-orders', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const order = manufacturingLib.updateOrder(ctx.db, Number(req.params.orderId), req.body);
+    if (!order) { ctx.db.close(); return res.status(404).json({ error: 'أمر التصنيع غير موجود' }); }
+    res.json(order);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/manufacturing/orders/:orderId/issue', windowPerm('mfg-orders', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    manufacturingLib.ensureAccounts(ctx.db);
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(manufacturingLib.issueMaterials(ctx.db, Number(req.params.orderId), {
+      ...req.body, fiscal_year_id: fy ? fy.id : null
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/manufacturing/orders/:orderId/complete', windowPerm('mfg-orders', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    manufacturingLib.ensureAccounts(ctx.db);
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(manufacturingLib.completeOrder(ctx.db, Number(req.params.orderId), {
+      ...req.body, fiscal_year_id: fy ? fy.id : null
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/manufacturing/orders/:orderId/cancel', windowPerm('mfg-orders', 'edit'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(manufacturingLib.cancelOrder(ctx.db, Number(req.params.orderId))); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- مصروفات التصنيع ----------
+app.get('/api/companies/:companyId/manufacturing/expenses', windowPerm('mfg-expenses', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    res.json(manufacturingLib.listExpenses(ctx.db, {
+      orderId: req.query.order_id, type: req.query.type, from: req.query.from, to: req.query.to,
+      limit: Number(req.query.limit) || 500
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/manufacturing/orders/:orderId/expenses', windowPerm('mfg-expenses', 'add'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    manufacturingLib.ensureAccounts(ctx.db);
+    const fy = ctx.db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
+    res.json(manufacturingLib.addExpense(ctx.db, Number(req.params.orderId), {
+      ...req.body, fiscal_year_id: fy ? fy.id : null
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/manufacturing/expenses/:expenseId', windowPerm('mfg-expenses', 'delete'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const ok = manufacturingLib.deleteExpense(ctx.db, Number(req.params.expenseId));
+    if (!ok) { ctx.db.close(); return res.status(404).json({ error: 'المصروف غير موجود' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+// ---------- تقارير التصنيع ----------
+app.get('/api/companies/:companyId/manufacturing/reports', windowPerm('mfg-reports', 'view'), (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    res.json(manufacturingLib.reports(ctx.db, {
+      from: req.query.from, to: req.query.to, productId: req.query.product_id
+    }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
 });
 

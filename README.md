@@ -19,7 +19,8 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Hospital Module** (for hospitals): Patients, doctors & departments, appointments, medical records, and patient billing.
 - **Restaurants & Cafes — Recipes & Costing** (for restaurants/cafes): define a **recipe (BOM)** for each meal linking the finished product to its raw ingredients with quantities and wastage, get an automatic portion/batch cost and profit margin, and issue **production orders** that consume ingredients from the warehouse, add the finished meal, and update its cost (the basis for cost of goods sold). Meals with insufficient finished stock are **produced automatically at the moment of sale**.
 - **Hotel & Serviced-Apartment Module** (for hotels/serviced apartments): define **unit types** (single, double, suite, serviced apartment) with rates and capacity, manage **rooms/units** and their statuses (available, occupied, cleaning, maintenance, out of service), keep a **guest register**, create **bookings** with same-unit overlap prevention, **check guests in and out**, and maintain a **guest folio** with room nights, extra services (laundry, room service, breakfast, transport...), payments, and deposits — posting accommodation revenue, VAT, and guest receivables to the journal automatically at check-out.
-- **Company-Scoped Roles & Permissions**: Three roles — `platform` (provisions companies and audits them read-only), `admin` (full control inside its own company only), and `user` (per-window permissions inside its own company). Permission windows are limited to the company's activity type (e.g. hospital windows only for hospitals, hotel windows only for hotels/serviced apartments, inventory/POS for goods activities, and recipes/production only for restaurants/cafes). No account can ever reach another company's data.
+- **Manufacturing Module** (for factories/industrial companies): define **bills of materials (BOM)** linking each finished product to its raw materials with quantities, wastage and yield, create **manufacturing orders** (planned quantity, dates, warehouse), **issue materials** from stock, record **direct and indirect manufacturing expenses** (labor, utilities, rent, depreciation, maintenance...), and **complete production** — which automatically posts the cost flows (raw materials → work in progress `1312` → finished goods `1313`), adds the finished quantity to inventory, and updates the product cost. Orders can be **cancelled** with a full reversal of stock movements and journal entries, and dedicated **dashboards and reports** show WIP, cost breakdown, expense analysis by item, and monthly production.
+- **Company-Scoped Roles & Permissions**: Three roles — `platform` (provisions companies and audits them read-only), `admin` (full control inside its own company only), and `user` (per-window permissions inside its own company). Permission windows are limited to the company's activity type (e.g. hospital windows only for hospitals, hotel windows only for hotels/serviced apartments, manufacturing windows only for factories, inventory/POS for goods activities, and recipes/production only for restaurants/cafes). No account can ever reach another company's data.
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
 - **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the company admin only, with every action recorded in the audit log.
@@ -55,7 +56,7 @@ Default accounts:
 2. Review the auto-generated chart of accounts for the selected activity.
 3. Record journal entries, invoices, customers, and suppliers.
 4. Review reports (trial balance, income statement, balance sheet, VAT report).
-5. Manage warehouses, products, stock counts, and sell through the POS. For restaurants/cafes, define recipes and produce meals; their POS lists only manufactured meals. For hotels/serviced apartments, define unit types and rooms, and register bookings and guests.
+5. Manage warehouses, products, stock counts, and sell through the POS. For restaurants/cafes, define recipes and produce meals; their POS lists only manufactured meals. For factories, define manufacturing BOMs and orders, issue materials, record direct/indirect expenses, and complete production. For hotels/serviced apartments, define unit types and rooms, and register bookings and guests.
 6. Manage HR: employees, attendance, leaves, and monthly payroll.
 7. At year end: close the fiscal year and start a new one automatically.
 
@@ -91,6 +92,8 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 | `public/js/views-restaurant.js` | Restaurant/cafe UI (recipes & production) |
 | `lib/hotel.js` | Hotel/serviced-apartment module: unit types, rooms, guests, bookings, guest folio |
 | `public/js/views-hotel.js` | Hotel UI (rooms, guests, bookings, services, billing) |
+| `lib/manufacturing.js` | Factory manufacturing: bills of materials, orders, direct/indirect expenses, costing & reports |
+| `public/js/views-manufacturing.js` | Factory manufacturing UI (dashboard, BOMs, orders, expenses, reports) |
 | `lib/db-tools.js` | DB backup / restore / compress / repair |
 | `lib/zatca/` | ZATCA e-invoicing (QR + XML + signing + submission) |
 | `seed.js` | Demo data for 5 companies |
@@ -98,7 +101,7 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 
 ## UI Overview
 
-All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
+All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Manufacturing (Dashboard, BOMs, Orders, Expenses, Reports), Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
 
 ## Internal Chat
 
