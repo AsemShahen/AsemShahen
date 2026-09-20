@@ -19,7 +19,7 @@ const MfgHelpers = {
     },
     mExpenseTypeLabel(x) { return x === 'indirect' ? t('غير مباشر') : t('مباشر'); },
     mCategoryLabel(key) {
-      const found = (this.meta.categories || []).find(c => c.key === key);
+      const found = ((this.meta && this.meta.categories) || []).find(c => c.key === key);
       return found ? t(found.label) : key;
     }
   }
@@ -829,11 +829,11 @@ const ManufacturingReportsView = {
   mixins: [CommonMixin, MfgHelpers],
   data() {
     return {
-      report: null, products: [], loading: true, alert: null,
+      report: null, products: [], meta: {}, loading: true, alert: null,
       filters: { from: '', to: '', product_id: '' }
     };
   },
-  async created() { await Promise.all([this.load(), this.loadProducts()]); },
+  async created() { await Promise.all([this.load(), this.loadProducts(), this.loadMeta()]); },
   methods: {
     async load() {
       this.loading = true;
@@ -849,6 +849,10 @@ const ManufacturingReportsView = {
     },
     async loadProducts() {
       try { this.products = await this.api(`/api/companies/${this.company.id}/manufacturing/products`); }
+      catch (e) { this.toast(e.message, 'error'); }
+    },
+    async loadMeta() {
+      try { this.meta = await this.api(`/api/companies/${this.company.id}/manufacturing/meta`); }
       catch (e) { this.toast(e.message, 'error'); }
     }
   },
