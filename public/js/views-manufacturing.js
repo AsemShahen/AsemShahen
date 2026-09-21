@@ -20,7 +20,13 @@ const MfgHelpers = {
     mExpenseTypeLabel(x) { return x === 'indirect' ? t('غير مباشر') : t('مباشر'); },
     mCategoryLabel(key) {
       const found = ((this.meta && this.meta.categories) || []).find(c => c.key === key);
-      return found ? t(found.label) : key;
+      if (found) return t(found.label);
+      const fallback = {
+        material: 'مواد ومستلزمات مباشرة', labor: 'أجور مباشرة', other: 'مصروف مباشر آخر',
+        labor_indirect: 'أجور غير مباشرة', utilities: 'كهرباء ومياه ووقود', rent: 'إيجار المصنع',
+        depreciation: 'إهلاك الآلات', maintenance: 'تشغيل وصيانة', other_indirect: 'مصروف غير مباشر آخر'
+      };
+      return t(fallback[key] || key);
     }
   }
 };
@@ -872,7 +878,7 @@ const ManufacturingReportsView = {
       <button class="btn btn-sm btn-ghost" @click="load">{{ t('تحديث') }}</button>
     </div>
 
-    <div v-if="report">
+    <div v-if="report && report.totals">
       <div class="cards-grid mb-2">
         <div class="stat-card"><div class="label">{{ t('كمية الإنتاج') }}</div><div class="value">{{ fmt.num(report.totals.qty) }}</div></div>
         <div class="stat-card"><div class="label">{{ t('تكلفة المواد') }}</div><div class="value">{{ mMoney(report.totals.material) }}</div></div>
@@ -888,7 +894,7 @@ const ManufacturingReportsView = {
             <table>
               <thead><tr><th>{{ t('الرقم') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('المنتج') }}</th><th>{{ t('الكمية') }}</th><th>{{ t('مواد') }}</th><th>{{ t('مباشر') }}</th><th>{{ t('غير مباشر') }}</th><th>{{ t('الإجمالي') }}</th><th>{{ t('تكلفة الوحدة') }}</th></tr></thead>
               <tbody>
-                <tr v-for="o in report.orders" :key="o.id">
+                <tr v-for="o in (report.orders || [])" :key="o.id">
                   <td class="monospace">{{ o.order_no }}</td>
                   <td>{{ fmt.date(o.date) }}</td>
                   <td>{{ o.product_name || '—' }}</td>
@@ -899,7 +905,7 @@ const ManufacturingReportsView = {
                   <td class="num">{{ mMoney(o.total_cost) }}</td>
                   <td class="num">{{ mMoney(o.unit_cost) }}</td>
                 </tr>
-                <tr v-if="!report.orders.length"><td colspan="9" class="muted">{{ t('لا توجد أوامر مكتملة في الفترة') }}</td></tr>
+                <tr v-if="!(report.orders || []).length"><td colspan="9" class="muted">{{ t('لا توجد أوامر مكتملة في الفترة') }}</td></tr>
               </tbody>
             </table>
           </div>
@@ -913,13 +919,13 @@ const ManufacturingReportsView = {
             <table>
               <thead><tr><th>{{ t('النوع') }}</th><th>{{ t('البند') }}</th><th>{{ t('العدد') }}</th><th>{{ t('القيمة') }}</th></tr></thead>
               <tbody>
-                <tr v-for="c in report.by_category" :key="c.type + c.cost_account">
+                <tr v-for="c in (report.by_category || [])" :key="c.type + c.cost_account">
                   <td>{{ mExpenseTypeLabel(c.type) }}</td>
                   <td>{{ mCategoryLabel(c.category) }}</td>
                   <td class="num">{{ c.cnt }}</td>
                   <td class="num">{{ mMoney(c.amount) }}</td>
                 </tr>
-                <tr v-if="!report.by_category.length"><td colspan="4" class="muted">{{ t('لا توجد بيانات') }}</td></tr>
+                <tr v-if="!(report.by_category || []).length"><td colspan="4" class="muted">{{ t('لا توجد بيانات') }}</td></tr>
               </tbody>
             </table>
           </div>
@@ -930,8 +936,8 @@ const ManufacturingReportsView = {
             <table>
               <thead><tr><th>{{ t('الشهر') }}</th><th>{{ t('أوامر') }}</th><th>{{ t('الكمية') }}</th><th>{{ t('التكلفة') }}</th></tr></thead>
               <tbody>
-                <tr v-for="m in report.monthly" :key="m.month"><td>{{ m.month }}</td><td class="num">{{ m.orders }}</td><td class="num">{{ fmt.num(m.qty) }}</td><td class="num">{{ mMoney(m.cost) }}</td></tr>
-                <tr v-if="!report.monthly.length"><td colspan="4" class="muted">{{ t('لا توجد بيانات') }}</td></tr>
+                <tr v-for="m in (report.monthly || [])" :key="m.month"><td>{{ m.month }}</td><td class="num">{{ m.orders }}</td><td class="num">{{ fmt.num(m.qty) }}</td><td class="num">{{ mMoney(m.cost) }}</td></tr>
+                <tr v-if="!(report.monthly || []).length"><td colspan="4" class="muted">{{ t('لا توجد بيانات') }}</td></tr>
               </tbody>
             </table>
           </div>

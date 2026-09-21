@@ -25,8 +25,9 @@ const PORT = process.env.PORT || 3001;
 
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use((req, res, next) => {
-  if (req.path.startsWith('/js/') || req.path.startsWith('/css/')) {
-    res.setHeader('Cache-Control', 'no-store');
+  if (req.path.startsWith('/js/') || req.path.startsWith('/css/')
+      || req.path === '/' || req.path.endsWith('.html')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   }
   next();
 });
