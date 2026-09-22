@@ -19,6 +19,7 @@ const hrLib = require('./lib/hr');
 const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
 const chatLib = require('./lib/chat');
+const activityLib = require('./lib/activity');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -44,9 +45,17 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// ---------- سجل عمليات المستخدمين: التقاط العمليات عند اكتمال الاستجابة ----------
+app.use('/api', (req, res, next) => {
+  res.on('finish', () => activityLib.capture(req, res));
+  next();
+});
+
 // ---------- أدوات التحقق من الصلاحيات ----------
 function windowPerm(windowKey, action = 'view') {
   return (req, res, next) => {
+    req.activityWindow = windowKey;
+    req.activityAction = action;
     const companyId = Number(req.params.companyId);
     if (usersLib.hasPerm(req.user, companyId, windowKey, action)) return next();
     return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' });
@@ -56,6 +65,8 @@ function windowPerm(windowKey, action = 'view') {
 // يقبل أي واحدة من عدة نوافذ (مفيد للنوافذ المشتركة بين شاشات مترابطة)
 function anyWindowPerm(windowKeys, action = 'view') {
   return (req, res, next) => {
+    req.activityWindow = windowKeys[0];
+    req.activityAction = action;
     const companyId = Number(req.params.companyId);
     if (windowKeys.some(k => usersLib.hasPerm(req.user, companyId, k, action))) return next();
     return res.status(403).json({ error: 'ليست لديك صلاحية لهذه العملية' });
@@ -96,17 +107,39 @@ function invPerm(action) {
 
 // ---------- المصادقة: دخول وخروج وتفاصيل المستخدم ----------
 app.post('/api/login', (req, res) => {
+  const username = req.body && req.body.username;
   const user = usersLib.authenticate(
-    req.body && req.body.username,
+    username,
     req.body && req.body.password,
     req.body && req.body.companyId
   );
-  if (!user) return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  if (!user) {
+    activityLib.record({
+      username: String(username || ''), action: 'login', summary: 'محاولة دخول فاشلة',
+      method: 'POST', path: '/api/login', ip: activityLib.clientIp(req), device: activityLib.deviceOf(req),
+      user_agent: req.headers['user-agent'] || '', status: 401
+    });
+    return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  }
   const token = usersLib.createSession(user.id);
+  activityLib.record({
+    user_id: user.id, username: user.username, role: user.role, company_id: user.company_id,
+    action: 'login', summary: 'تسجيل الدخول', method: 'POST', path: '/api/login',
+    ip: activityLib.clientIp(req), device: activityLib.deviceOf(req),
+    user_agent: req.headers['user-agent'] || '', status: 200
+  });
   res.json({ token, user });
 });
 
 app.post('/api/logout', (req, res) => {
+  if (req.user) {
+    activityLib.record({
+      user_id: req.user.id, username: req.user.username, role: req.user.role, company_id: req.user.company_id,
+      action: 'logout', summary: 'تسجيل الخروج', method: 'POST', path: '/api/logout',
+      ip: activityLib.clientIp(req), device: activityLib.deviceOf(req),
+      user_agent: req.headers['user-agent'] || '', status: 200
+    });
+  }
   usersLib.deleteSession(req.token);
   res.json({ ok: true });
 });
@@ -2466,6 +2499,49 @@ app.post('/api/companies/:companyId/hotel/bookings/:bookingId/check-out', window
     res.json(hotelLib.checkOut(ctx.db, Number(req.params.bookingId), { ...req.body, fiscal_year_id: fy.id }));
   } catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
+});
+
+// ==================== سجل عمليات المستخدمين ====================
+function activityFilters(req) {
+  return {
+    companyId: req.params.companyId,
+    userId: req.query.user_id,
+    action: req.query.action,
+    windowKey: req.query.window_key,
+    from: req.query.from,
+    to: req.query.to,
+    q: req.query.q,
+    limit: req.query.limit,
+    offset: req.query.offset
+  };
+}
+
+app.get('/api/companies/:companyId/activity', windowPerm('activity-log', 'view'), (req, res) => {
+  try {
+    const result = activityLib.list(activityFilters(req));
+    res.json({
+      ...result,
+      actions: activityLib.ACTION_LABELS,
+      windows: activityLib.WINDOW_LABELS,
+      users: activityLib.usersInLog(Number(req.params.companyId))
+    });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// سجل شامل لكل الشركات (مدير المنصة فقط)
+app.get('/api/activity', platformOnly, (req, res) => {
+  try {
+    const filters = activityFilters(req);
+    delete filters.companyId;
+    const result = activityLib.list(filters);
+    res.json({ ...result, actions: activityLib.ACTION_LABELS, windows: activityLib.WINDOW_LABELS, users: activityLib.usersInLog() });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// تسجيل حدث من الواجهة (طباعة/تصدير/استيراد) لا يصل للخادم بطبيعته
+app.post('/api/companies/:companyId/activity/event', (req, res) => {
+  activityLib.recordClientEvent(req, req.body || {});
+  res.json({ ok: true });
 });
 
 // ==================== لوحة التحكم ====================

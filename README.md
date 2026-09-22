@@ -24,6 +24,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Database Management**: From Settings → Databases you can create backups, download and restore them (from the list or by uploading a file), compress (`VACUUM`), and repair the company database (integrity check + rebuild), with an automatic safety backup before any restore.
 - **WhatsApp Integration**: Send sales/purchase invoices, POS receipts, and account statements to your customers and suppliers via WhatsApp — with per-company settings and templates. Works out of the box with a `wa.me` link or, when you add your WhatsApp Business Cloud API credentials, sends automatically.
 - **Internal Chat**: Instant company-wide communication through a **general channel**, per-department channels and direct private conversations (text messages, voice recordings, images, PDF/Word/Excel and any files, plus live voice and video calls). The full history is permanent and preserved for the whole company; employees cannot delete anything — deleting a message (or purging a channel) is restricted to the company admin only, with every action recorded in the audit log.
+- **User Activity Log**: A comprehensive audit trail of every operation users perform — add, edit, delete, search, print, import, and export, plus sign-in and sign-out. Each entry records the date and time, the user and role, the company, the operation type, a readable summary, the IP address, the device/browser name, and the outcome (success/failure). A dedicated screen lets you browse and filter by period, user, operation type, module, and free-text search, with CSV export and print preview. Records are stored centrally in the platform database, so company admins see their company's operations and the platform admin can review all companies.
 - **Bilingual UI**: Arabic (RTL) / English with an in-app language switcher.
 - **Fully Responsive**: Mobile-first responsive layout — collapsible sidebar drawer with a hamburger menu, stacked cards/forms, horizontally scrollable tables, bottom-sheet modals, and a dedicated two-pane chat experience on phones.
 
@@ -95,13 +96,15 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 | `lib/manufacturing.js` | Factory manufacturing: bills of materials, orders, direct/indirect expenses, costing & reports |
 | `public/js/views-manufacturing.js` | Factory manufacturing UI (dashboard, BOMs, orders, expenses, reports) |
 | `lib/db-tools.js` | DB backup / restore / compress / repair |
+| `lib/activity.js` | User activity log: capture/classify operations + query records |
+| `public/js/views-activity.js` | User activity log UI (filters, export, print preview) |
 | `lib/zatca/` | ZATCA e-invoicing (QR + XML + signing + submission) |
 | `seed.js` | Demo data for 5 companies |
 | `public/` | Web UI (Vue 3 SPA, no build step) |
 
 ## UI Overview
 
-All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Manufacturing (Dashboard, BOMs, Orders, Expenses, Reports), Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Fiscal Year Closing, Settings, and Users & Permissions.
+All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Manufacturing (Dashboard, BOMs, Orders, Expenses, Reports), Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Fiscal Year Closing, Settings, Users & Permissions, and the User Activity Log.
 
 ## Internal Chat
 

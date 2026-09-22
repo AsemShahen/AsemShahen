@@ -86,9 +86,52 @@ const accountCategoryLabels = {
 // ==================== المستخدم الحالي والصلاحيات ====================
 let _authUser = null;
 let _activeCompanyId = null;
+let _activeView = null;
 function setAuthUser(u) { _authUser = u; }
 function getAuthUser() { return _authUser; }
 function setActiveCompanyId(id) { _activeCompanyId = id; }
+function setActiveView(v) { _activeView = v; }
+function getActiveView() { return _activeView; }
+
+// اسم الجهاز/المتصفح (لا يمكن للمتصفح قراءة اسم الحاسب الفعلي، لذا نبني بصمة ثابتة للجهاز)
+function deviceName() {
+  try {
+    let d = localStorage.getItem('muhasib_device');
+    if (d) return d;
+    const ua = navigator.userAgent || '';
+    const os = /Windows/.test(ua) ? 'Windows'
+      : /Macintosh|Mac OS X/.test(ua) ? 'macOS'
+        : /Android/.test(ua) ? 'Android'
+          : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
+            : /Linux/.test(ua) ? 'Linux' : 'جهاز';
+    const br = /Edg\//.test(ua) ? 'Edge'
+      : /OPR\//.test(ua) ? 'Opera'
+        : /Chrome\//.test(ua) ? 'Chrome'
+          : /Firefox\//.test(ua) ? 'Firefox'
+            : /Safari\//.test(ua) ? 'Safari' : 'متصفح';
+    d = os + ' · ' + br + ' · ' + Math.random().toString(36).slice(2, 7).toUpperCase();
+    localStorage.setItem('muhasib_device', d);
+    return d;
+  } catch (e) { return 'جهاز'; }
+}
+
+// تسجيل حدث من الواجهة في سجل عمليات المستخدمين (طباعة/تصدير/استيراد...)
+function logActivity(action, summary) {
+  const cid = _activeCompanyId;
+  const token = localStorage.getItem('muhasib_token');
+  if (!cid || !token) return;
+  try {
+    fetch(`/api/companies/${cid}/activity/event`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': token,
+        'X-Device-Name': deviceName()
+      },
+      body: JSON.stringify({ action, summary: summary || '', window_key: _activeView || '' })
+    }).catch(() => {});
+  } catch (e) { /* تجاهل */ }
+}
 
 // إجراءات القراءة المسموحة لمدير المنصة أثناء التدقيق
 const PLATFORM_READONLY = ['view', 'search', 'print_preview', 'print', 'export'];
@@ -113,7 +156,7 @@ function can(windowKey, action, companyId) {
 
 // ==================== طلب واجهة برمجية مع المصادقة ====================
 async function apiFetch(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const headers = { 'Content-Type': 'application/json', 'X-Device-Name': deviceName(), ...(opts.headers || {}) };
   let body = opts.body;
   if (body !== undefined && body !== null && typeof body === 'object'
     && !(typeof Blob !== 'undefined' && body instanceof Blob)
@@ -137,6 +180,7 @@ function openPrintPreview(opts) {
   printStore.rows = opts.rows || [];
   printStore.footer = opts.footer || [];
   printStore.open = true;
+  logActivity('print_preview', opts.title || '');
 }
 
 function closePrintPreview() { printStore.open = false; }
@@ -158,10 +202,12 @@ function exportCsv(filename, cols, rows) {
     .concat(rows.map(r => r.map(esc).join(',')))
     .join('\r\n');
   downloadFile(filename + '.csv', '\uFEFF' + csv, 'text/csv;charset=utf-8');
+  logActivity('export', 'CSV: ' + filename);
 }
 
 function exportJson(filename, data) {
   downloadFile(filename + '.json', JSON.stringify(data, null, 2), 'application/json');
+  logActivity('export', 'JSON: ' + filename);
 }
 
 function importJsonFile(onData) {
@@ -173,8 +219,10 @@ function importJsonFile(onData) {
     if (!f) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { onData(JSON.parse(reader.result)); }
-      catch (e) { alert(t('ملف JSON غير صالح')); }
+      try {
+        onData(JSON.parse(reader.result));
+        logActivity('import', 'JSON: ' + f.name);
+      } catch (e) { alert(t('ملف JSON غير صالح')); }
     };
     reader.readAsText(f);
   };
@@ -282,10 +330,12 @@ const CommonMixin = {
           : (typeof this.previewLedger === 'function' ? this.previewLedger : null);
         if (preview) preview.call(this);
       }
+      logActivity('print', this.printStore.title || '');
       setTimeout(() => { try { window.print(); } catch (e) {} }, 100);
     },
     exportCsv,
     exportJson,
-    importJsonFile
+    importJsonFile,
+    logActivity
   }
 };

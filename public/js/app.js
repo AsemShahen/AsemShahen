@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { key: 'chat', label: 'المحادثة الداخلية', icon: '💬', alwaysShow: true },
   { key: 'settings', label: 'الإعدادات', icon: '⚙️' },
   { key: 'users', label: 'المستخدمون والصلاحيات', icon: '👤' },
+  { key: 'activity-log', label: 'سجل عمليات المستخدمين', icon: '📝' },
   { key: 'warehouses', label: 'المستودعات', icon: '📦' },
   { key: 'products', label: 'المنتجات', icon: '🏷️' },
   { key: 'stock', label: 'المخزون والأرصدة', icon: '📊', perm: 'inventory' },
@@ -105,6 +106,7 @@ const App = {
         'chat': ChatView,
         'settings': SettingsView,
         'users': UsersView,
+        'activity-log': ActivityLogView,
         'warehouses': WarehousesView,
         'products': ProductsView,
         'stock': StockView,
@@ -299,17 +301,19 @@ const App = {
       this.loginModal = { open: false, action: null, company: null, username: '', password: '', error: '', busy: false };
       await this.loadCompanies();
     },
-    navigate(view) { this.view = view; this.sidebarOpen = false; },
+    navigate(view) { this.view = view; setActiveView(view); this.sidebarOpen = false; },
     toggleSidebar() { this.sidebarOpen = !this.sidebarOpen; },
     openPrintPreview,
     closePrintPreview,
     doPrint() {
+      logActivity('print', this.printStore.title || '');
       setTimeout(() => { try { window.print(); } catch (e) {} }, 100);
     },
-    goDashboard() { this.view = 'dashboard'; this.sidebarOpen = false; },
+    goDashboard() { this.view = 'dashboard'; setActiveView('dashboard'); this.sidebarOpen = false; },
     backToCompanies() {
       this.activeCompany = null;
       setActiveCompanyId(null);
+      setActiveView(null);
       this.view = 'dashboard';
       localStorage.removeItem('muhasib_company');
       this.loadCompanies();
@@ -318,6 +322,7 @@ const App = {
       this.activeCompany = c;
       localStorage.setItem('muhasib_company', String(c.id));
       setActiveCompanyId(c.id);
+      setActiveView('dashboard');
       this.view = 'dashboard';
       await this.loadInfo();
     },
@@ -325,6 +330,7 @@ const App = {
       this.activeCompany = c;
       localStorage.setItem('muhasib_company', String(c.id));
       setActiveCompanyId(c.id);
+      setActiveView('chat');
       this.view = 'chat';
       await this.loadInfo();
     },
