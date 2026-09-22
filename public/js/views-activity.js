@@ -12,6 +12,7 @@ const ActivityLogView = {
       allCompanies: false,
       rows: [], total: 0,
       actionsMeta: {}, windowsMeta: {}, users: [],
+      canReveal: false, reveal: false,
       limit: 100, offset: 0,
       loading: true, alert: null
     };
@@ -49,6 +50,8 @@ const ActivityLogView = {
         const data = await this.api(`${this.basePath()}?${this.queryString()}`);
         this.rows = data.rows || [];
         this.total = data.total || 0;
+        this.canReveal = !!data.can_reveal;
+        if (!this.canReveal) this.reveal = false;
         this.actionsMeta = data.actions || {};
         this.windowsMeta = data.windows || {};
         this.users = data.users || [];
@@ -81,6 +84,9 @@ const ActivityLogView = {
       }[a] || 'gray';
     },
     isFailure(r) { return Number(r.status) >= 400; },
+    toggleReveal() { this.reveal = !this.reveal; },
+    shownIp(r) { return (this.canReveal && !this.reveal) ? '••••••••' : (r.ip || '—'); },
+    shownDevice(r) { return (this.canReveal && !this.reveal) ? '••••••••' : (r.device || '—'); },
     exportRows() {
       const cols = [t('التاريخ والوقت'), t('المستخدم'), t('الدور'), t('نوع العملية'), t('الشاشة'), t('ملخص العملية'), t('عنوان IP'), t('اسم الحاسب')];
       const data = this.rows.map(r => [
@@ -148,6 +154,9 @@ const ActivityLogView = {
       <div class="panel-header flex-between">
         <h3>{{ t('سجل عمليات المستخدمين') }} <span class="muted" style="font-size:13px;">({{ fmt.num(total) }})</span></h3>
         <div class="flex gap-2 no-print">
+          <button v-if="canReveal" class="btn btn-sm btn-ghost" @click="toggleReveal">
+            {{ reveal ? t('إخفاء IP واسم الحاسب') : t('إظهار IP واسم الحاسب') }}
+          </button>
           <button class="btn btn-sm btn-ghost" @click="preview">{{ t('معاينة قبل الطباعة') }}</button>
           <button class="btn btn-sm btn-ghost" @click="exportRows">{{ t('تصدير') }}</button>
         </div>
@@ -181,8 +190,8 @@ const ActivityLogView = {
                 </td>
                 <td>{{ t(windowLabel(r.window_key)) }}</td>
                 <td>{{ r.summary || '—' }}</td>
-                <td class="monospace" dir="ltr">{{ r.ip || '—' }}</td>
-                <td>{{ r.device || '—' }}</td>
+                <td class="monospace" dir="ltr">{{ shownIp(r) }}</td>
+                <td>{{ shownDevice(r) }}</td>
               </tr>
               <tr v-if="loading"><td colspan="8" class="muted">{{ t('جارٍ التحميل...') }}</td></tr>
               <tr v-else-if="!rows.length"><td colspan="8" class="muted">{{ t('لا توجد عمليات مسجّلة') }}</td></tr>

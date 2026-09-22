@@ -1336,6 +1336,8 @@ const EN_DICT = {
   'اسم الحاسب': 'Computer name',
   'الشاشة': 'Screen',
   'المستخدم': 'User',
+  'إظهار IP واسم الحاسب': 'Show IP and computer name',
+  'إخفاء IP واسم الحاسب': 'Hide IP and computer name',
   'من تاريخ': 'From date',
   'إلى تاريخ': 'To date',
   'بحث': 'Search',

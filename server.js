@@ -2502,6 +2502,9 @@ app.post('/api/companies/:companyId/hotel/bookings/:bookingId/check-out', window
 });
 
 // ==================== سجل عمليات المستخدمين ====================
+// بيانات حساسة (IP واسم الحاسب) تظهر ككلمة مرور ولا يكشفها إلا مدير الشركة أو مدير المنصة
+const ACTIVITY_MASK = '••••••••';
+
 function activityFilters(req) {
   return {
     companyId: req.params.companyId,
@@ -2518,12 +2521,18 @@ function activityFilters(req) {
 
 app.get('/api/companies/:companyId/activity', windowPerm('activity-log', 'view'), (req, res) => {
   try {
+    const companyId = Number(req.params.companyId);
+    const canReveal = usersLib.isCompanyAdmin(req.user, companyId) || usersLib.isPlatform(req.user);
     const result = activityLib.list(activityFilters(req));
+    const rows = canReveal ? result.rows
+      : result.rows.map(r => ({ ...r, ip: ACTIVITY_MASK, device: ACTIVITY_MASK }));
     res.json({
-      ...result,
+      total: result.total,
+      rows,
+      can_reveal: canReveal,
       actions: activityLib.ACTION_LABELS,
       windows: activityLib.WINDOW_LABELS,
-      users: activityLib.usersInLog(Number(req.params.companyId))
+      users: activityLib.usersInLog(companyId)
     });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -2534,7 +2543,7 @@ app.get('/api/activity', platformOnly, (req, res) => {
     const filters = activityFilters(req);
     delete filters.companyId;
     const result = activityLib.list(filters);
-    res.json({ ...result, actions: activityLib.ACTION_LABELS, windows: activityLib.WINDOW_LABELS, users: activityLib.usersInLog() });
+    res.json({ total: result.total, rows: result.rows, can_reveal: true, actions: activityLib.ACTION_LABELS, windows: activityLib.WINDOW_LABELS, users: activityLib.usersInLog() });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
