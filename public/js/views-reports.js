@@ -4,19 +4,20 @@
 // ==================== ميزان المراجعة ====================
 const TrialBalanceView = {
   name: 'TrialBalanceView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() { return { tb: null, loading: true, alert: null }; },
-  async created() {
-    try { this.tb = await this.api(`/api/companies/${this.company.id}/trial-balance`); }
-    catch (e) { this.toast(e.message, 'error'); }
-    finally { this.loading = false; }
-  },
+  async created() { await this.reload(); },
   computed: {
     rows() {
       return this.tb ? this.tb.items.filter(i => !i.is_header && (i.debit > 0 || i.credit > 0)) : [];
     }
   },
   methods: {
+    async reload() {
+      try { this.tb = await this.api(`/api/companies/${this.company.id}/trial-balance${this.branchQuery()}`); }
+      catch (e) { this.toast(e.message, 'error'); }
+      finally { this.loading = false; }
+    },
     preview() {
       const rows = this.rows.map(i => [i.code, i.name, i.debit ? this.fmt.num(i.debit) : '—', i.credit ? this.fmt.num(i.credit) : '—']);
       this.openPrintPreview({
@@ -39,6 +40,10 @@ const TrialBalanceView = {
       <div class="panel-header">
         <h3>{{ t('ميزان المراجعة') }}</h3>
         <div class="flex flex-wrap">
+          <select v-if="branches.length" v-model="branchId" style="min-width:150px;">
+            <option value="">{{ t('كل الفروع') }}</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
           <button v-if="can('trial-balance', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
           <button v-if="can('trial-balance', 'print')" class="btn btn-sm btn-ghost" @click="doPrint">🖨️ {{ t('طباعة') }}</button>
           <button v-if="can('trial-balance', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
@@ -77,18 +82,19 @@ const TrialBalanceView = {
 // ==================== قائمة الدخل ====================
 const IncomeStatementView = {
   name: 'IncomeStatementView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() { return { s: null, loading: true, alert: null }; },
-  async created() {
-    try { this.s = await this.api(`/api/companies/${this.company.id}/income-statement`); }
-    catch (e) { this.toast(e.message, 'error'); }
-    finally { this.loading = false; }
-  },
+  async created() { await this.reload(); },
   computed: {
     revRows() { return this.s ? this.s.revenues.filter(r => Math.abs(r.amount) > 0.01) : []; },
     expenseRows() { return this.s ? this.s.expenses.filter(e => Math.abs(e.amount) > 0.01) : []; }
   },
   methods: {
+    async reload() {
+      try { this.s = await this.api(`/api/companies/${this.company.id}/income-statement${this.branchQuery()}`); }
+      catch (e) { this.toast(e.message, 'error'); }
+      finally { this.loading = false; }
+    },
     preview() {
       const rows = [];
       for (const r of this.revRows) rows.push([r.code + ' - ' + r.name, this.fmt.money(r.amount)]);
@@ -115,6 +121,12 @@ const IncomeStatementView = {
       <h3>{{ t('قائمة الدخل') }}</h3>
       <div class="company">{{ company.name }}</div>
       <div class="muted" v-if="s">{{ t('السنة المالية {fy}', { fy: info.active_fiscal_year ? info.active_fiscal_year.name : '' }) }}</div>
+      <div v-if="branches.length" style="margin-top:6px;">
+        <select v-model="branchId" style="max-width:220px;">
+          <option value="">{{ t('كل الفروع') }}</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+      </div>
     </div>
     <div class="panel">
       <div class="panel-body pad-0">
@@ -162,19 +174,20 @@ const IncomeStatementView = {
 // ==================== الميزانية العمومية ====================
 const BalanceSheetView = {
   name: 'BalanceSheetView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() { return { s: null, loading: true, alert: null }; },
-  async created() {
-    try { this.s = await this.api(`/api/companies/${this.company.id}/balance-sheet`); }
-    catch (e) { this.toast(e.message, 'error'); }
-    finally { this.loading = false; }
-  },
+  async created() { await this.reload(); },
   computed: {
     assetsRows() { return this.s ? this.s.assets.filter(a => Math.abs(a.amount) > 0.01) : []; },
     liabRows() { return this.s ? this.s.liabilities.filter(a => Math.abs(a.amount) > 0.01) : []; },
     equityRows() { return this.s ? this.s.equity.filter(a => Math.abs(a.amount) > 0.01) : []; }
   },
   methods: {
+    async reload() {
+      try { this.s = await this.api(`/api/companies/${this.company.id}/balance-sheet${this.branchQuery()}`); }
+      catch (e) { this.toast(e.message, 'error'); }
+      finally { this.loading = false; }
+    },
     preview() {
       const rows = [];
       for (const a of this.assetsRows) rows.push([a.code + ' - ' + a.name, this.fmt.money(a.amount)]);
@@ -205,6 +218,12 @@ const BalanceSheetView = {
       <h3>{{ t('الميزانية العمومية') }}</h3>
       <div class="company">{{ company.name }}</div>
       <div class="muted" v-if="s">{{ t('السنة المالية {fy}', { fy: info.active_fiscal_year ? info.active_fiscal_year.name : '' }) }}</div>
+      <div v-if="branches.length" style="margin-top:6px;">
+        <select v-model="branchId" style="max-width:220px;">
+          <option value="">{{ t('كل الفروع') }}</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" class="responsive-2">
@@ -269,14 +288,15 @@ const BalanceSheetView = {
 // ==================== تقرير ضريبة القيمة المضافة ====================
 const VatReportView = {
   name: 'VatReportView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() { return { vat: null, loading: true, alert: null }; },
-  async created() {
-    try { this.vat = await this.api(`/api/companies/${this.company.id}/vat-report`); }
-    catch (e) { this.toast(e.message, 'error'); }
-    finally { this.loading = false; }
-  },
+  async created() { await this.reload(); },
   methods: {
+    async reload() {
+      try { this.vat = await this.api(`/api/companies/${this.company.id}/vat-report${this.branchQuery()}`); }
+      catch (e) { this.toast(e.message, 'error'); }
+      finally { this.loading = false; }
+    },
     preview() {
       const rows = (this.vat && this.vat.details ? this.vat.details : []).map(d => [
         d.date, d.entry_no, d.description, d.code + ' - ' + d.account_name,
@@ -306,6 +326,13 @@ const VatReportView = {
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
+
+    <div v-if="branches.length" class="flex flex-wrap mb-2" style="justify-content:flex-end;">
+      <select v-model="branchId" style="min-width:180px;">
+        <option value="">{{ t('كل الفروع') }}</option>
+        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+      </select>
+    </div>
 
     <div class="cards-grid" v-if="vat">
       <div class="stat-card">

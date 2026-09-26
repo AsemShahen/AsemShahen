@@ -7,35 +7,45 @@ const WarehousesView = {
   name: 'WarehousesView',
   mixins: [CommonMixin],
   data() {
-    return { warehouses: [], loading: true, alert: null, filter: '', showModal: false, editing: null, form: {} };
+    return { warehouses: [], branches: [], loading: true, alert: null, filter: '', branchFilter: '', showModal: false, editing: null, form: {} };
   },
   async created() { await this.load(); },
   computed: {
     filtered() {
+      let list = this.warehouses;
+      if (this.branchFilter) list = list.filter(w => Number(w.branch_id) === Number(this.branchFilter));
       const f = this.filter.trim();
-      if (!f) return this.warehouses;
-      return this.warehouses.filter(w => w.name.includes(f) || (w.code || '').includes(f));
+      if (!f) return list;
+      return list.filter(w => w.name.includes(f) || (w.code || '').includes(f));
     }
   },
   methods: {
     async load() {
-      try { this.warehouses = await this.api(`/api/companies/${this.company.id}/warehouses`); }
+      try {
+        const [warehouses, branches] = await Promise.all([
+          this.api(`/api/companies/${this.company.id}/warehouses`),
+          this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
+        ]);
+        this.warehouses = warehouses;
+        this.branches = branches || [];
+      }
       catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
     openCreate() {
+      const def = this.branches.find(b => b.is_default) || this.branches[0];
       this.editing = null;
-      this.form = { name: '', code: '', address: '' };
+      this.form = { name: '', code: '', address: '', branch_id: def ? def.id : '' };
       this.showModal = true;
     },
     openEdit(w) {
       this.editing = w;
-      this.form = { name: w.name, code: w.code, address: w.address || '' };
+      this.form = { name: w.name, code: w.code, address: w.address || '', branch_id: w.branch_id || '' };
       this.showModal = true;
     },
     async save() {
       try {
-        const body = { name: this.form.name, code: this.form.code, address: this.form.address };
+        const body = { name: this.form.name, code: this.form.code, address: this.form.address, branch_id: this.form.branch_id || undefined };
         if (this.editing) {
           await this.api(`/api/companies/${this.company.id}/warehouses/${this.editing.id}`, { method: 'PUT', body });
           this.toast(t('تم التحديث'));
@@ -72,7 +82,11 @@ const WarehousesView = {
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
         <input v-if="can('warehouses', 'search')" :placeholder="t('بحث بالاسم أو الرمز...')" v-model="filter" style="min-width:220px;">
-        <p class="muted">{{ t('عدد المستودعات: {n}', { n: warehouses.length }) }}</p>
+        <select v-if="branches.length" v-model="branchFilter" style="min-width:160px;">
+          <option value="">{{ t('كل الفروع') }}</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+        <p class="muted">{{ t('عدد المستودعات: {n}', { n: filtered.length }) }}</p>
       </div>
       <div class="flex flex-wrap">
         <button v-if="can('warehouses', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
@@ -87,12 +101,13 @@ const WarehousesView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('العنوان') }}</th><th>{{ t('قيمة المخزون') }}</th><th></th></tr>
+              <tr><th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('العنوان') }}</th><th>{{ t('قيمة المخزون') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="w in filtered" :key="w.id">
                 <td class="monospace"><strong>{{ w.code || '—' }}</strong></td>
                 <td>{{ w.name }} <span v-if="w.is_default" class="badge green">{{ t('الافتراضي') }}</span></td>
+                <td>{{ w.branch_name || '—' }}</td>
                 <td>{{ w.address || '—' }}</td>
                 <td class="num">{{ fmt.money(w.value || 0) }}</td>
                 <td>
@@ -100,7 +115,7 @@ const WarehousesView = {
                   <button v-if="!w.is_default && can('warehouses', 'delete')" class="btn btn-sm btn-ghost" @click="remove(w)">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!warehouses.length"><td colspan="5" class="muted">{{ t('لا توجد مستودعات بعد') }}</td></tr>
+              <tr v-if="!warehouses.length"><td colspan="6" class="muted">{{ t('لا توجد مستودعات بعد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -113,6 +128,12 @@ const WarehousesView = {
         <div class="form-grid">
           <label>{{ t('الاسم') }} <input v-model.trim="form.name"></label>
           <label>{{ t('الرمز') }} <input v-model.trim="form.code" :placeholder="t('مثال: WH-002')" dir="ltr"></label>
+          <label v-if="branches.length">{{ t('الفرع') }}
+            <select v-model="form.branch_id">
+              <option value="">{{ t('الافتراضي') }}</option>
+              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </label>
           <label class="span2">{{ t('العنوان') }} <input v-model.trim="form.address"></label>
         </div>
         <div class="modal-actions">

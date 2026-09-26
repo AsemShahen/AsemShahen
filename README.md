@@ -7,6 +7,7 @@ An integrated Arabic (RTL) accounting and business management system operating i
 ## Features
 
 - **Multi-Company**: Each company has its own database file (`company_<id>.db`), and each account belongs to exactly one company. The platform admin (created at install) provisions companies and audits them, while every company is administered independently by its own company admin.
+- **Multi-Branch**: Companies can define multiple **branches** (code, name, manager, phone, address, notes) with an optional default branch. Warehouses, users, invoices and journal entries can be linked to a branch, and every report and dashboard can be filtered by branch. Branch management is available to the company admin only, and existing records are automatically assigned to the default branch.
 - **Activity-Based Chart of Accounts**: Pre-configured charts for corporate, supermarket, factory, medical lab, hospital, restaurant/cafe, and hotel/serviced-apartment businesses.
 - **Saudi VAT (15%)**: VAT reports by period, with accounts 1401 (input VAT) and 2103 (output VAT).
 - **ZATCA E-Invoicing**: Generates compliant e-invoices for the Saudi ZATCA (TLV QR code + UBL 2.1 XML with SHA-256 hashing and ECDSA P-256 signing), with automatic submission (Report / Clearance) on every sale invoice.
@@ -104,7 +105,7 @@ Each invoice stores its submission status (`zatca_status`): `not_configured` / `
 
 ## UI Overview
 
-All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Manufacturing (Dashboard, BOMs, Orders, Expenses, Reports), Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Fiscal Year Closing, Settings, Users & Permissions, and the User Activity Log.
+All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledger, Trial Balance, Income Statement, Balance Sheet, VAT Report, Sales & Purchase Invoices, Customers & Suppliers, Inventory & Stock, POS, Recipes & Costing, Production, Manufacturing (Dashboard, BOMs, Orders, Expenses, Reports), Employees & Departments, Leaves, Payroll, Hotel (Rooms & Units, Guest Register, Bookings, Services, Guest Accounts & Billing), Hospital, Internal Chat, Branches, Fiscal Year Closing, Settings, Users & Permissions, and the User Activity Log.
 
 ## Internal Chat
 

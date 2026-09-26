@@ -192,26 +192,33 @@ const JournalView = {
   mixins: [CommonMixin],
   data() {
     return {
-      entries: [], accounts: [], loading: true, alert: null, filter: '',
+      entries: [], accounts: [], branches: [], loading: true, alert: null, filter: '', entryBranchFilter: '',
       showModal: false, saving: false,
-      form: { date: new Date().toISOString().slice(0, 10), description: '', lines: [] }
+      form: { date: new Date().toISOString().slice(0, 10), description: '', branch_id: '', lines: [] }
     };
   },
   async created() { await this.load(); },
   methods: {
+    branchName(id) {
+      const b = this.branches.find(x => Number(x.id) === Number(id));
+      return b ? b.name : '—';
+    },
     async load() {
       try {
-        const [entries, accounts] = await Promise.all([
+        const [entries, accounts, branches] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/journal`),
-          this.api(`/api/companies/${this.company.id}/accounts`)
+          this.api(`/api/companies/${this.company.id}/accounts`),
+          this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
         ]);
         this.entries = entries;
         this.accounts = accounts.filter(a => !a.is_header);
+        this.branches = branches || [];
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
     openCreate() {
-      this.form = { date: new Date().toISOString().slice(0, 10), description: '', lines: [this.emptyLine(), this.emptyLine()] };
+      const def = this.branches.find(b => b.is_default) || this.branches[0];
+      this.form = { date: new Date().toISOString().slice(0, 10), description: '', branch_id: def ? def.id : '', lines: [this.emptyLine(), this.emptyLine()] };
       this.showModal = true;
     },
     emptyLine() {
@@ -232,6 +239,7 @@ const JournalView = {
           body: {
             date: this.form.date,
             description: this.form.description,
+            branch_id: this.form.branch_id ? Number(this.form.branch_id) : undefined,
             lines: this.form.lines.map(l => ({ account_id: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, detail: l.detail }))
           }
         });
@@ -257,9 +265,11 @@ const JournalView = {
       return Math.abs(d - c) < 0.01;
     },
     filteredEntries() {
+      let list = this.entries;
+      if (this.entryBranchFilter) list = list.filter(e => Number(e.branch_id) === Number(this.entryBranchFilter));
       const f = this.filter.trim();
-      if (!f) return this.entries;
-      return this.entries.filter(e =>
+      if (!f) return list;
+      return list.filter(e =>
         e.entry_no.includes(f) || e.description.includes(f) ||
         e.lines.some(l => (l.code || '').includes(f) || (l.account_name || l.name || '').includes(f)));
     },
@@ -323,7 +333,11 @@ const JournalView = {
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
         <input v-if="can('journal', 'search')" :placeholder="t('بحث برقم القيد أو البيان أو الحساب...')" v-model="filter" style="min-width:260px;">
-        <p class="muted">{{ t('عدد القيود: {n}', { n: entries.length }) }}</p>
+        <select v-if="branches.length" v-model="entryBranchFilter" style="min-width:160px;">
+          <option value="">{{ t('كل الفروع') }}</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+        <p class="muted">{{ t('عدد القيود: {n}', { n: filteredEntries().length }) }}</p>
       </div>
       <div class="flex flex-wrap">
         <button v-if="can('journal', 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
@@ -340,7 +354,7 @@ const JournalView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th><th>{{ t('الحسابات') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('النوع') }}</th><th></th></tr>
+              <tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('الحسابات') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('النوع') }}</th><th></th></tr>
             </thead>
             <tbody>
               <template v-for="e in filteredEntries()" :key="e.id">
@@ -348,6 +362,7 @@ const JournalView = {
                   <td class="monospace"><strong>{{ e.entry_no }}</strong></td>
                   <td>{{ fmt.date(e.date) }}</td>
                   <td style="white-space:normal;max-width:260px;">{{ e.description }}</td>
+                  <td>{{ branchName(e.branch_id) }}</td>
                   <td style="max-width:220px;white-space:normal;">
                     <div v-for="l in e.lines" :key="l.id" style="font-size:12px;">
                       <span class="muted">{{ l.code }}</span> {{ l.account_name || l.name }}
@@ -365,7 +380,7 @@ const JournalView = {
                   </td>
                 </tr>
               </template>
-              <tr v-if="!entries.length"><td colspan="8" class="muted">{{ t('لا توجد قيود بعد - أضف أول قيد') }}</td></tr>
+              <tr v-if="!entries.length"><td colspan="9" class="muted">{{ t('لا توجد قيود بعد - أضف أول قيد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -377,6 +392,12 @@ const JournalView = {
         <h3>{{ t('قيد يومية جديد') }}</h3>
         <div class="form-grid">
           <label>{{ t('التاريخ') }} <input type="date" v-model="form.date"></label>
+          <label v-if="branches.length">{{ t('الفرع') }}
+            <select v-model="form.branch_id">
+              <option value="">{{ t('الافتراضي') }}</option>
+              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </label>
           <label class="span2">{{ t('البيان') }} <input v-model.trim="form.description" :placeholder="t('شرح القيد...')"></label>
         </div>
 
@@ -419,7 +440,7 @@ const JournalView = {
 // ==================== دفتر الأستاذ ====================
 const LedgerView = {
   name: 'LedgerView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() {
     return { accounts: [], accountId: null, ledger: null, loading: true, alert: null };
   },
@@ -430,10 +451,11 @@ const LedgerView = {
     finally { this.loading = false; }
   },
   methods: {
+    reload() { return this.loadLedger(); },
     async loadLedger() {
       if (!this.accountId) return;
       try {
-        this.ledger = await this.api(`/api/companies/${this.company.id}/ledger/${this.accountId}`);
+        this.ledger = await this.api(`/api/companies/${this.company.id}/ledger/${this.accountId}${this.branchQuery()}`);
       } catch (e) { this.toast(e.message, 'error'); }
     },
     previewLedger() {
@@ -482,6 +504,10 @@ const LedgerView = {
           <select v-model="accountId" style="min-width:320px;" @change="loadLedger">
             <option value="">{{ t('اختر الحساب لعرض حركاته...') }}</option>
             <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} - {{ a.name }}</option>
+          </select>
+          <select v-if="branches.length" v-model="branchId" style="min-width:160px;">
+            <option value="">{{ t('كل الفروع') }}</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
           </select>
           <span v-if="ledger" class="chip">{{ t('رصيد الحساب:') }} {{ fmt.money(ledger.balance.balance) }}</span>
         </div>

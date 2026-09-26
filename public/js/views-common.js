@@ -339,3 +339,20 @@ const CommonMixin = {
     logActivity
   }
 };
+
+// ==================== تصفية التقارير حسب الفرع ====================
+// يوفّر قائمة الفروع + المعرّف المختار ويستدعي reload() عند تغييره
+const ReportBranchMixin = {
+  data() { return { branches: [], branchId: '' }; },
+  async created() {
+    try { this.branches = await this.api(`/api/companies/${this.company.id}/branches`).catch(() => []) || []; }
+    catch (e) { this.branches = []; }
+  },
+  watch: {
+    branchId() { if (typeof this.reload === 'function') this.reload(); }
+  },
+  methods: {
+    branchQuery() { return this.branchId ? `?branch=${this.branchId}` : ''; },
+    branchJoin() { return this.branchId ? '&branch=' + this.branchId : ''; }
+  }
+};

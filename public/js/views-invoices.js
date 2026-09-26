@@ -7,8 +7,8 @@ const InvoicesView = {
   props: { kind: { type: String, required: true } },
   data() {
     return {
-      invoices: [], parties: [], methods: [], products: [], warehouses: [],
-      loading: true, alert: null, filter: '', barcodeInput: '',
+      invoices: [], parties: [], methods: [], products: [], warehouses: [], branches: [],
+      loading: true, alert: null, filter: '', branchFilter: '', barcodeInput: '',
       showModal: false, saving: false, payModal: null, paying: false,
       detail: null, qrUrl: '', detailLoading: false,
       form: {}
@@ -20,30 +20,42 @@ const InvoicesView = {
     title() { return this.isSale ? t('فواتير البيع') : t('فواتير الشراء'); },
     partyType() { return this.isSale ? 'customer' : 'supplier'; },
     win() { return this.isSale ? 'invoices-sale' : 'invoices-purchase'; },
+    branchWarehouses() {
+      if (!this.form.branch_id) return this.warehouses;
+      return this.warehouses.filter(w => Number(w.branch_id) === Number(this.form.branch_id));
+    },
     filteredInvoices() {
+      let list = this.invoices;
+      if (this.branchFilter) list = list.filter(i => Number(i.branch_id) === Number(this.branchFilter));
       const f = this.filter.trim();
-      if (!f) return this.invoices;
-      return this.invoices.filter(i =>
+      if (!f) return list;
+      return list.filter(i =>
         i.invoice_no.includes(f) ||
         (i.party && i.party.name.includes(f)) ||
         (i.party && i.party.tax_id && i.party.tax_id.includes(f)));
     }
   },
   methods: {
+    branchName(id) {
+      const b = this.branches.find(x => Number(x.id) === Number(id));
+      return b ? b.name : '—';
+    },
     async load() {
       try {
-        const [invoices, parties, methods, products, warehouses] = await Promise.all([
+        const [invoices, parties, methods, products, warehouses, branches] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/invoices?kind=${this.kind}`),
           this.api(`/api/companies/${this.company.id}/parties?type=${this.partyType}`),
           this.api(`/api/companies/${this.company.id}/payment-methods`),
           this.api(`/api/companies/${this.company.id}/products`),
-          this.api(`/api/companies/${this.company.id}/warehouses`)
+          this.api(`/api/companies/${this.company.id}/warehouses`),
+          this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
         ]);
         this.invoices = invoices;
         this.parties = parties;
         this.methods = methods;
         this.products = products;
         this.warehouses = warehouses;
+        this.branches = branches || [];
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
@@ -51,9 +63,11 @@ const InvoicesView = {
       await this.askWhatsApp({ type: 'invoice', kind: this.kind, invoiceId: i.id });
     },
     openCreate() {
+      const def = this.branches.find(b => b.is_default) || this.branches[0];
       this.form = {
         party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: Number(this.info.settings.vat_rate) || 15,
         payment_method: 'cash', paid_amount: null, discount: 0, notes: '',
+        branch_id: def ? def.id : '',
         warehouse_id: this.warehouses.length ? this.warehouses[0].id : '',
         lines: [this.emptyLine()]
       };
@@ -102,6 +116,7 @@ const InvoicesView = {
           payment_method: this.form.payment_method,
           paid_amount: this.form.paid_amount !== null ? Number(this.form.paid_amount) : undefined,
           notes: this.form.notes,
+          branch_id: this.form.branch_id ? Number(this.form.branch_id) : undefined,
           lines: this.form.lines.map(l => ({ product_id: l.product_id ? Number(l.product_id) : undefined, warehouse_id: this.form.warehouse_id ? Number(this.form.warehouse_id) : undefined, description: l.description, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, discount: Number(l.discount) || 0 }))
         };
         await this.api(`/api/companies/${this.company.id}/invoices`, { method: 'POST', body });
@@ -231,7 +246,11 @@ const InvoicesView = {
     <div class="flex-between flex-wrap mb-2">
       <div class="flex flex-wrap">
         <input v-if="can(win, 'search')" :placeholder="t('بحث برقم الفاتورة أو الطرف أو الرقم الضريبي...')" v-model="filter" style="min-width:260px;">
-        <p class="muted">{{ t('عدد الفواتير: {n}', { n: invoices.length }) }}</p>
+        <select v-if="branches.length" v-model="branchFilter" style="min-width:160px;">
+          <option value="">{{ t('كل الفروع') }}</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+        <p class="muted">{{ t('عدد الفواتير: {n}', { n: filteredInvoices.length }) }}</p>
       </div>
       <div class="flex flex-wrap">
         <button v-if="can(win, 'print_preview')" class="btn btn-sm btn-ghost" @click="preview">👁️ {{ t('معاينة قبل الطباعة') }}</button>
@@ -249,7 +268,7 @@ const InvoicesView = {
           <table>
             <thead>
               <tr>
-                <th>{{ t('رقم الفاتورة') }}</th><th>{{ isSale ? t('العميل') : t('المورد') }}</th><th>{{ t('التاريخ') }}</th>
+                <th>{{ t('رقم الفاتورة') }}</th><th>{{ isSale ? t('العميل') : t('المورد') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('التاريخ') }}</th>
                 <th>{{ t('الإجمالي') }}</th><th>{{ t('الضريبة') }}</th><th>{{ t('طريقة الدفع') }}</th><th>{{ t('المدفوع') }}</th><th>{{ t('الحالة') }}</th>
                 <th v-if="isSale">{{ t('الفاتورة الإلكترونية (ZATCA)') }}</th><th></th>
               </tr>
@@ -258,6 +277,7 @@ const InvoicesView = {
               <tr v-for="i in filteredInvoices" :key="i.id">
                 <td class="monospace"><strong>{{ i.invoice_no }}</strong></td>
                 <td>{{ i.party ? i.party.name : '—' }}</td>
+                <td>{{ branchName(i.branch_id) }}</td>
                 <td>{{ fmt.date(i.date) }}</td>
                 <td class="num">{{ fmt.money(i.total) }}</td>
                 <td class="num">{{ fmt.money(i.vat) }}</td>
@@ -273,7 +293,7 @@ const InvoicesView = {
                   <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
                 </td>
               </tr>
-              <tr v-if="!invoices.length"><td :colspan="isSale ? 10 : 9" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
+              <tr v-if="!invoices.length"><td :colspan="isSale ? 11 : 10" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -291,6 +311,12 @@ const InvoicesView = {
             </select>
           </label>
           <label>{{ t('التاريخ') }} <input type="date" v-model="form.date"></label>
+          <label v-if="branches.length">{{ t('الفرع') }}
+            <select v-model="form.branch_id">
+              <option value="">{{ t('الافتراضي') }}</option>
+              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </label>
           <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.vat_rate"></label>
           <label>{{ t('طريقة الدفع') }}
             <select v-model="form.payment_method">
@@ -309,7 +335,7 @@ const InvoicesView = {
         <div v-if="warehouses.length" class="form-grid mt-2">
           <label class="span2">{{ t('المستودع') }}
             <select v-model="form.warehouse_id">
-              <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
+              <option v-for="w in branchWarehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
             </select>
           </label>
         </div>

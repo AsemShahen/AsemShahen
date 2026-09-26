@@ -1360,7 +1360,37 @@ const EN_DICT = {
   'مستخدم': 'User',
   'السابق': 'Previous',
   'التالي': 'Next',
-  'صفحة': 'Page'
+  'صفحة': 'Page',
+
+  // ===== الفروع =====
+  'الفروع': 'Branches',
+  'فروع': 'branches',
+  'فرع': 'Branch',
+  'الفرع': 'Branch',
+  'فرع جديد': 'New branch',
+  'إضافة فرع جديد': 'Add new branch',
+  'تعديل فرع': 'Edit branch',
+  'اسم الفرع': 'Branch name',
+  'اسم الفرع مطلوب': 'Branch name is required',
+  'رمز الفرع': 'Branch code',
+  'مدير الفرع': 'Branch manager',
+  'المدير': 'Manager',
+  'افتراضي': 'Default',
+  'الفرع الافتراضي': 'Default branch',
+  'الفرع الافتراضي يُستخدم تلقائياً عند عدم اختيار فرع.': 'The default branch is used automatically when no branch is selected.',
+  'الفرع نشط': 'Branch is active',
+  'تلقائي إن تُرك فارغاً': 'Automatic if left empty',
+  'تأكيد حذف الفرع': 'Confirm branch deletion',
+  'هل أنت متأكد من حذف الفرع {name}؟': 'Are you sure you want to delete branch {name}?',
+  'تم إنشاء الفرع': 'Branch created',
+  'تم تحديث الفرع': 'Branch updated',
+  'تم حذف الفرع': 'Branch deleted',
+  'عدد الفروع: {n}': 'Branches: {n}',
+  'فروع {company}': 'Branches of {company}',
+  'لا توجد فروع': 'No branches yet',
+  'كل الفروع': 'All branches',
+  'مستودعات': 'warehouses',
+  'فواتير': 'invoices'
 };
 
 const I18N = Vue.reactive({ lang: 'ar', en: EN_DICT });

@@ -6,7 +6,7 @@ const UsersView = {
   mixins: [CommonMixin],
   data() {
     return {
-      users: [], windows: [], actions: [],
+      users: [], windows: [], actions: [], branches: [],
       loading: true, alert: null,
       showModal: false, editing: null, saving: false, deleting: null,
       form: {}
@@ -14,13 +14,15 @@ const UsersView = {
   },
   async created() {
     try {
-      const [users, model] = await Promise.all([
+      const [users, model, branches] = await Promise.all([
         this.api(`/api/companies/${this.company.id}/users`),
-        this.api(`/api/companies/${this.company.id}/permission-model`)
+        this.api(`/api/companies/${this.company.id}/permission-model`),
+        this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
       ]);
       this.users = users;
       this.windows = model.windows || [];
       this.actions = model.actions || [];
+      this.branches = branches || [];
     } catch (e) { this.toast(e.message, 'error'); }
     finally { this.loading = false; }
   },
@@ -31,6 +33,10 @@ const UsersView = {
     }
   },
   methods: {
+    branchName(id) {
+      const b = this.branches.find(x => Number(x.id) === Number(id));
+      return b ? b.name : '';
+    },
     emptyMatrix() {
       const m = {};
       for (const w of this.windows) {
@@ -55,13 +61,13 @@ const UsersView = {
     },
     openCreate() {
       this.editing = null;
-      this.form = { username: '', password: '', role: 'user', is_active: true, permissions: this.emptyMatrix() };
+      this.form = { username: '', password: '', role: 'user', branch_id: '', is_active: true, permissions: this.emptyMatrix() };
       this.showModal = true;
     },
     openEdit(u) {
       this.editing = u;
       this.form = {
-        username: u.username, password: '', role: u.role, is_active: !!u.is_active,
+        username: u.username, password: '', role: u.role, branch_id: u.branch_id || '', is_active: !!u.is_active,
         permissions: this.matrixFrom(u)
       };
       this.showModal = true;
@@ -72,6 +78,7 @@ const UsersView = {
         const body = {
           username: this.form.username,
           role: this.form.role,
+          branch_id: this.form.branch_id || null,
           is_active: this.form.is_active,
           permissions: this.form.permissions
         };
@@ -129,7 +136,7 @@ const UsersView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
+              <tr><th>{{ t('اسم المستخدم') }}</th><th>{{ t('الدور') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('الحالة') }}</th><th>{{ t('عدد الصلاحيات') }}</th><th>{{ t('تاريخ الإنشاء') }}</th><th></th></tr>
             </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
@@ -137,6 +144,7 @@ const UsersView = {
                   <span v-if="u.id === currentUserId" class="badge green" style="margin-right:6px;">{{ t('أنا') }}</span>
                 </td>
                 <td><span class="badge" :class="u.role === 'admin' ? 'yellow' : 'gray'">{{ u.role === 'admin' ? t('مدير الشركة') : t('مستخدم') }}</span></td>
+                <td>{{ u.branch_id ? branchName(u.branch_id) : t('كل الفروع') }}</td>
                 <td><span class="badge" :class="u.is_active ? 'green' : 'red'">{{ u.is_active ? t('نشط') : t('موقوف') }}</span></td>
                 <td>{{ grantedCount(u) }}</td>
                 <td class="monospace">{{ u.created_at ? u.created_at.slice(0, 10) : '—' }}</td>
@@ -145,7 +153,7 @@ const UsersView = {
                   <button class="btn btn-sm btn-danger" @click="confirmDelete(u)" v-if="u.id !== currentUserId">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!users.length"><td colspan="6" class="muted">{{ t('لا يوجد مستخدمون في هذه الشركة') }}</td></tr>
+              <tr v-if="!users.length"><td colspan="7" class="muted">{{ t('لا يوجد مستخدمون في هذه الشركة') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -166,6 +174,12 @@ const UsersView = {
             <select v-model="form.role">
               <option value="user">{{ t('مستخدم') }}</option>
               <option value="admin">{{ t('مدير الشركة') }}</option>
+            </select>
+          </label>
+          <label>{{ t('الفرع') }}
+            <select v-model="form.branch_id">
+              <option value="">{{ t('كل الفروع') }}</option>
+              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
           </label>
           <label class="flex" style="flex-direction:row;align-items:center;gap:8px;">

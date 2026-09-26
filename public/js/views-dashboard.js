@@ -2,18 +2,12 @@
 
 const DashboardView = {
   name: 'DashboardView',
-  mixins: [CommonMixin],
+  mixins: [CommonMixin, ReportBranchMixin],
   data() {
     return { loading: true, d: null, alert: null };
   },
   async created() {
-    try {
-      this.d = await this.api(`/api/companies/${this.company.id}/dashboard`);
-    } catch (e) {
-      this.toast(e.message, 'error');
-    } finally {
-      this.loading = false;
-    }
+    await this.load();
   },
   computed: {
     maxMonth() {
@@ -25,6 +19,16 @@ const DashboardView = {
     }
   },
   methods: {
+    reload() { return this.load(); },
+    async load() {
+      try {
+        this.d = await this.api(`/api/companies/${this.company.id}/dashboard${this.branchQuery()}`);
+      } catch (e) {
+        this.toast(e.message, 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
     exportData() {
       const d = this.d;
       if (!d) return;
@@ -44,7 +48,11 @@ const DashboardView = {
   template: `
   <div>
     <div v-if="alert" class="alert" :class="alert.type">{{ alert.message }}</div>
-    <div class="flex" style="justify-content:flex-end;margin-bottom:12px;">
+    <div class="flex" style="justify-content:flex-end;margin-bottom:12px;gap:8px;">
+      <select v-if="branches.length" v-model="branchId" style="min-width:160px;">
+        <option value="">{{ t('كل الفروع') }}</option>
+        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+      </select>
       <button v-if="can('dashboard', 'export')" class="btn btn-sm btn-ghost" @click="exportData">⬇️ {{ t('تصدير CSV') }}</button>
     </div>
     <div v-if="!d" class="empty-state"><div class="icon">⏳</div><p>{{ t('جاري التحميل...') }}</p></div>

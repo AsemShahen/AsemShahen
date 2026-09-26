@@ -20,6 +20,7 @@ const dbTools = require('./lib/db-tools');
 const whatsappLib = require('./lib/whatsapp');
 const chatLib = require('./lib/chat');
 const activityLib = require('./lib/activity');
+const branchesLib = require('./lib/branches');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -105,6 +106,19 @@ function invPerm(action) {
   };
 }
 
+// الفرع المطلوب للتصفية (فقط عند اختياره صراحةً)
+function filterBranchId(req) {
+  const b = req.query && req.query.branch;
+  return (b === undefined || b === null || b === '' || b === 'all') ? null : Number(b);
+}
+
+// الفرع المستخدم عند إنشاء سجل جديد: فرع الطلب ثم فرع المستخدم ثم الفرع الافتراضي
+function newRecordBranchId(req, db) {
+  const explicit = req.body && req.body.branch_id;
+  const fromUser = req.user && req.user.branch_id;
+  return branchesLib.resolveBranchId(db, explicit || fromUser);
+}
+
 // ---------- المصادقة: دخول وخروج وتفاصيل المستخدم ----------
 app.post('/api/login', (req, res) => {
   const username = req.body && req.body.username;
@@ -184,6 +198,42 @@ function companyUserTarget(req, res, next) {
 app.get('/api/companies/:companyId/permission-model', companyUsersPerm, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   res.json({ windows: usersLib.windowsFor(company && company.business_type), actions: usersLib.ACTIONS });
+});
+
+// ==================== فروع الشركة ====================
+// قراءة الفروع: متاحة لأي مستخدم داخل الشركة (للاستخدام في القوائم والنماذج)
+app.get('/api/companies/:companyId/branches', (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(branchesLib.listBranches(ctx.db, { includeInactive: true })); }
+  finally { ctx.db.close(); }
+});
+
+app.post('/api/companies/:companyId/branches', companyAdminOnly, (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { res.json(branchesLib.createBranch(ctx.db, req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.put('/api/companies/:companyId/branches/:branchId', companyAdminOnly, (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try {
+    const b = branchesLib.updateBranch(ctx.db, Number(req.params.branchId), req.body);
+    if (!b) return res.status(404).json({ error: 'الفرع غير موجود' });
+    res.json(b);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
+});
+
+app.delete('/api/companies/:companyId/branches/:branchId', companyAdminOnly, (req, res) => {
+  const ctx = getCompanyDb(req, res);
+  if (!ctx) return;
+  try { branchesLib.deleteBranch(ctx.db, Number(req.params.branchId)); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+  finally { ctx.db.close(); }
 });
 
 app.get('/api/companies/:companyId/users', companyUsersPerm, (req, res) => {
@@ -438,7 +488,7 @@ app.get('/api/companies/:companyId/journal', windowPerm('journal', 'view'), (req
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const entries = accounting.listJournalEntries(db, { fiscal_year_id: fy.id, limit: 1000 });
+  const entries = accounting.listJournalEntries(db, { fiscal_year_id: fy.id, branch_id: filterBranchId(req), limit: 1000 });
   db.close();
   res.json(entries);
 });
@@ -450,7 +500,7 @@ app.post('/api/companies/:companyId/journal', windowPerm('journal', 'add'), (req
   try {
     const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
     if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-    const entry = accounting.createJournalEntry(db, { ...req.body, fiscal_year_id: fy.id });
+    const entry = accounting.createJournalEntry(db, { ...req.body, branch_id: newRecordBranchId(req, db), fiscal_year_id: fy.id });
     db.close();
     res.json(entry);
   } catch (e) {
@@ -492,8 +542,8 @@ app.get('/api/companies/:companyId/ledger/:accountId', windowPerm('ledger', 'vie
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
   const { from, to } = req.query;
-  const lines = accounting.getLedger(db, account.id, { from, to, fiscal_year_id: fy.id });
-  const bal = accounting.accountBalance(db, account, { asOf: to || null, fiscal_year_id: fy.id });
+  const lines = accounting.getLedger(db, account.id, { from, to, fiscal_year_id: fy.id, branch_id: filterBranchId(req) });
+  const bal = accounting.accountBalance(db, account, { asOf: to || null, fiscal_year_id: fy.id, branch_id: filterBranchId(req) });
   db.close();
   res.json({ account, lines, balance: bal, fiscal_year: fy });
 });
@@ -505,7 +555,7 @@ app.get('/api/companies/:companyId/trial-balance', windowPerm('trial-balance', '
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const tb = accounting.trialBalance(db, { fiscal_year_id: fy.id, asOf: req.query.asOf });
+  const tb = accounting.trialBalance(db, { fiscal_year_id: fy.id, asOf: req.query.asOf, branch_id: filterBranchId(req) });
   db.close();
   res.json(tb);
 });
@@ -517,7 +567,7 @@ app.get('/api/companies/:companyId/income-statement', windowPerm('income-stateme
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const stmt = accounting.incomeStatement(db, { fiscal_year_id: fy.id, asOf: req.query.asOf });
+  const stmt = accounting.incomeStatement(db, { fiscal_year_id: fy.id, asOf: req.query.asOf, branch_id: filterBranchId(req) });
   db.close();
   res.json(stmt);
 });
@@ -528,7 +578,7 @@ app.get('/api/companies/:companyId/balance-sheet', windowPerm('balance-sheet', '
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const bs = accounting.balanceSheet(db, { fiscal_year_id: fy.id, asOf: req.query.asOf });
+  const bs = accounting.balanceSheet(db, { fiscal_year_id: fy.id, asOf: req.query.asOf, branch_id: filterBranchId(req) });
   db.close();
   res.json(bs);
 });
@@ -540,12 +590,13 @@ app.get('/api/companies/:companyId/vat-report', windowPerm('vat', 'view'), (req,
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const vat = accounting.vatReport(db, { asOf: req.query.asOf, fiscal_year_id: fy.id });
+  const vat = accounting.vatReport(db, { asOf: req.query.asOf, fiscal_year_id: fy.id, branch_id: filterBranchId(req) });
+  const bId = filterBranchId(req);
   const details = db.prepare(`
     SELECT je.date, je.entry_no, je.description, jl.vat_amount, jl.vat_type, a.code, a.name AS account_name
     FROM journal_lines jl JOIN journal_entries je ON je.id = jl.entry_id JOIN accounts a ON a.id = jl.account_id
-    WHERE jl.vat_amount > 0 ORDER BY je.date DESC LIMIT 500
-  `).all();
+    WHERE jl.vat_amount > 0${bId ? ' AND je.branch_id = ?' : ''} ORDER BY je.date DESC LIMIT 500
+  `).all(...(bId ? [bId] : []));
   db.close();
   res.json({ ...vat, details });
 });
@@ -586,7 +637,7 @@ app.get('/api/companies/:companyId/invoices', invPerm('view'), (req, res) => {
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const invs = invoicesLib.listInvoices(db, { kind: req.query.kind, fiscal_year_id: fy.id });
+  const invs = invoicesLib.listInvoices(db, { kind: req.query.kind, fiscal_year_id: fy.id, branch_id: filterBranchId(req) });
   db.close();
   res.json(invs);
 });
@@ -598,7 +649,7 @@ app.post('/api/companies/:companyId/invoices', invPerm('add'), async (req, res) 
   try {
     const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
     if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-    const inv = await invoicesLib.createInvoice(db, { ...req.body, fiscal_year_id: fy.id, company });
+    const inv = await invoicesLib.createInvoice(db, { ...req.body, branch_id: newRecordBranchId(req, db), fiscal_year_id: fy.id, company });
     db.close();
     res.json(inv);
   } catch (e) {
@@ -1207,14 +1258,14 @@ function getCompanyDb(req, res) {
 app.get('/api/companies/:companyId/warehouses', windowPerm('warehouses', 'view'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  res.json(inventoryLib.listWarehouses(ctx.db));
+  res.json(inventoryLib.listWarehouses(ctx.db, { branch_id: filterBranchId(req) }));
   ctx.db.close();
 });
 
 app.post('/api/companies/:companyId/warehouses', windowPerm('warehouses', 'add'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  try { res.json(inventoryLib.createWarehouse(ctx.db, req.body)); }
+  try { res.json(inventoryLib.createWarehouse(ctx.db, { ...req.body, branch_id: req.body.branch_id || req.user.branch_id })); }
   catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
 });
@@ -1301,7 +1352,7 @@ app.get('/api/companies/:companyId/stock/summary', windowPerm('inventory', 'view
 app.get('/api/companies/:companyId/stock/movements', windowPerm('inventory', 'view'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  res.json(inventoryLib.listMovements(ctx.db, { productId: req.query.product_id, warehouseId: req.query.warehouse_id }));
+  res.json(inventoryLib.listMovements(ctx.db, { productId: req.query.product_id, warehouseId: req.query.warehouse_id, branch_id: filterBranchId(req) }));
   ctx.db.close();
 });
 
@@ -2560,21 +2611,24 @@ app.get('/api/companies/:companyId/dashboard', windowPerm('dashboard', 'view'), 
   const db = accounting.getDb(company.id);
   const fy = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-  const stmt = accounting.incomeStatement(db, { fiscal_year_id: fy.id });
-  const bs = accounting.balanceSheet(db, { fiscal_year_id: fy.id });
-  const sales = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=?`).get(fy.id).t;
-  const purchases = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=?`).get(fy.id).t;
-  const receivables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=? AND status!='paid'`).get(fy.id).t;
-  const payables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=? AND status!='paid'`).get(fy.id).t;
-  const recentEntries = accounting.listJournalEntries(db, { fiscal_year_id: fy.id, limit: 8 });
-  const recentInvoices = invoicesLib.listInvoices(db, { fiscal_year_id: fy.id, limit: 8 });
-  const cash = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1101'`).get()).balance;
-  const bank = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1111'`).get()).balance;
+  const bId = filterBranchId(req);
+  const bsuffix = bId ? ' AND branch_id=?' : '';
+  const bargs = bId ? [bId] : [];
+  const stmt = accounting.incomeStatement(db, { fiscal_year_id: fy.id, branch_id: bId });
+  const bs = accounting.balanceSheet(db, { fiscal_year_id: fy.id, branch_id: bId });
+  const sales = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
+  const purchases = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
+  const receivables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
+  const payables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
+  const recentEntries = accounting.listJournalEntries(db, { fiscal_year_id: fy.id, branch_id: bId, limit: 8 });
+  const recentInvoices = invoicesLib.listInvoices(db, { fiscal_year_id: fy.id, branch_id: bId, limit: 8 });
+  const cash = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1101'`).get(), { branch_id: bId }).balance;
+  const bank = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1111'`).get(), { branch_id: bId }).balance;
 
   const salesByMonth = db.prepare(`
     SELECT strftime('%m', date) AS m, COALESCE(SUM(total),0) AS t FROM invoices
-    WHERE kind='sale' AND fiscal_year_id=? GROUP BY m ORDER BY m
-  `).all(fy.id);
+    WHERE kind='sale' AND fiscal_year_id=?${bsuffix} GROUP BY m ORDER BY m
+  `).all(fy.id, ...bargs);
 
   db.close();
   res.json({ fy, stmt, bs, sales, purchases, receivables, payables, cash, bank, salesByMonth, recentEntries, recentInvoices });
