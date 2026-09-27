@@ -290,6 +290,11 @@ const VatReportView = {
   name: 'VatReportView',
   mixins: [CommonMixin, ReportBranchMixin],
   data() { return { vat: null, loading: true, alert: null }; },
+  computed: {
+    vatTaxLabel() { return this.vat && this.vat.tax_label ? t(this.vat.tax_label) : t('ضريبة القيمة المضافة'); },
+    vatAuthority() { return this.vat && this.vat.tax_authority ? t(this.vat.tax_authority) : t('هيئة الزكاة والضريبة والجمارك (ZATCA)'); },
+    vatCurrency() { return (this.vat && this.vat.currency) ? this.vat.currency : 'SAR'; }
+  },
   async created() { await this.reload(); },
   methods: {
     async reload() {
@@ -301,17 +306,18 @@ const VatReportView = {
       const rows = (this.vat && this.vat.details ? this.vat.details : []).map(d => [
         d.date, d.entry_no, d.description, d.code + ' - ' + d.account_name,
         d.vat_type === 'output' ? t('ضريبة مبيعات') : t('ضريبة مشتريات'),
-        this.fmt.money(d.vat_amount)
+        this.fmt.moneyFor(d.vat_amount, this.vatCurrency)
       ]);
       this.openPrintPreview({
-        title: t('تقرير الضريبة (VAT)'),
+        title: t('تقرير {x}', { x: this.vatTaxLabel }),
         sub: `${this.company.name} - ${t('السنة المالية {fy}', { fy: this.info.active_fiscal_year ? this.info.active_fiscal_year.name : '' })}`,
         cols: [t('التاريخ'), t('رقم القيد'), t('البيان'), t('الحساب'), t('النوع'), t('مبلغ الضريبة')],
         rows,
         footer: this.vat ? [
-          t('ضريبة المبيعات (خرج): {x}', { x: this.fmt.money(this.vat.output) }),
-          t('ضريبة المشتريات (دخل): {x}', { x: this.fmt.money(this.vat.input) }),
-          t('صافي الضريبة المستحقة للهيئة: {x}', { x: this.fmt.money(this.vat.netDue) })
+          t('ضريبة المبيعات (خرج): {x}', { x: this.fmt.moneyFor(this.vat.output, this.vatCurrency) }),
+          t('ضريبة المشتريات (دخل): {x}', { x: this.fmt.moneyFor(this.vat.input, this.vatCurrency) }),
+          t('صافي الضريبة المستحقة للهيئة: {x}', { x: this.fmt.moneyFor(this.vat.netDue, this.vatCurrency) }),
+          t('الجهة: {x}', { x: this.vatAuthority })
         ] : []
       });
     },
@@ -338,25 +344,25 @@ const VatReportView = {
       <div class="stat-card">
         <div class="icon">📤</div>
         <div class="label">{{ t('ضريبة المبيعات (خرج)') }}</div>
-        <div class="value pos">{{ fmt.money(vat.output) }}</div>
+        <div class="value pos">{{ fmt.moneyFor(vat.output, vatCurrency) }}</div>
         <div class="sub">{{ t('{n} معاملة', { n: vat.outputCount }) }}</div>
       </div>
       <div class="stat-card">
         <div class="icon">📥</div>
         <div class="label">{{ t('ضريبة المشتريات (دخل)') }}</div>
-        <div class="value">{{ fmt.money(vat.input) }}</div>
+        <div class="value">{{ fmt.moneyFor(vat.input, vatCurrency) }}</div>
         <div class="sub">{{ t('{n} معاملة', { n: vat.inputCount }) }}</div>
       </div>
       <div class="stat-card" :style="vat.netDue >= 0 ? '' : 'border-color:#b8e0cd;'">
         <div class="icon">🏛️</div>
-        <div class="label">{{ t('صافي الضريبة المستحقة للهيئة') }}</div>
-        <div class="value" :class="vat.netDue >= 0 ? '' : 'neg'">{{ fmt.money(vat.netDue) }}</div>
-        <div class="sub">{{ t('تُسدد للهيئة العامة للزكاة والضريبة والجمارك (ZATCA)') }}</div>
+        <div class="label">{{ t('صافي {x} المستحقة للهيئة', { x: vatTaxLabel }) }}</div>
+        <div class="value" :class="vat.netDue >= 0 ? '' : 'neg'">{{ fmt.moneyFor(vat.netDue, vatCurrency) }}</div>
+        <div class="sub">{{ t('تُسدد لـ {x}', { x: vatAuthority }) }}</div>
       </div>
     </div>
 
     <div class="panel" v-if="vat">
-      <div class="panel-header"><h3>{{ t('تفاصيل الحركات الضريبية') }}</h3></div>
+      <div class="panel-header"><h3>{{ t('تفاصيل الحركات — {x}', { x: vatTaxLabel }) }} <span class="badge gray">{{ vat.currency || vatCurrency }} {{ fmt.currencySymbol(vatCurrency) }}</span></h3></div>
       <div class="panel-body pad-0">
         <div class="table-wrap">
           <table>
@@ -370,7 +376,7 @@ const VatReportView = {
                 <td style="white-space:normal;max-width:260px;">{{ d.description }}</td>
                 <td>{{ d.code }} - {{ d.account_name }}</td>
                 <td><span class="badge" :class="d.vat_type === 'output' ? 'yellow' : 'green'">{{ d.vat_type === 'output' ? t('ضريبة مبيعات') : t('ضريبة مشتريات') }}</span></td>
-                <td class="num">{{ fmt.money(d.vat_amount) }}</td>
+                <td class="num">{{ fmt.moneyFor(d.vat_amount, vatCurrency) }}</td>
               </tr>
               <tr v-if="!vat || !vat.details.length"><td colspan="6" class="muted">{{ t('لا توجد حركات ضريبية') }}</td></tr>
             </tbody>

@@ -9,6 +9,8 @@ const invoicesLib = require('./lib/invoices');
 const partiesLib = require('./lib/parties');
 const chartsLib = require('./lib/charts');
 const zatcaLib = require('./lib/zatca');
+const jofotaraLib = require('./lib/jofotara');
+const taxLib = require('./lib/tax');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
 const inventoryLib = require('./lib/inventory');
@@ -212,7 +214,12 @@ app.get('/api/companies/:companyId/branches', (req, res) => {
 app.post('/api/companies/:companyId/branches', companyAdminOnly, (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  try { res.json(branchesLib.createBranch(ctx.db, req.body)); }
+  try {
+    const body = { ...req.body };
+    if (body.tax_country === undefined) body.tax_country = ctx.company.tax_country || 'SA';
+    // النسبة الافتراضية للدولة عند عدم تحديد نسبة للفرع
+    res.json(branchesLib.createBranch(ctx.db, body));
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
 });
@@ -592,13 +599,18 @@ app.get('/api/companies/:companyId/vat-report', windowPerm('vat', 'view'), (req,
   if (!fy) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
   const vat = accounting.vatReport(db, { asOf: req.query.asOf, fiscal_year_id: fy.id, branch_id: filterBranchId(req) });
   const bId = filterBranchId(req);
+  const reportTax = bId ? taxLib.branchTax(db, bId) : null;
+  const reportCountry = reportTax ? reportTax.country : taxLib.normalizeCountry(company.tax_country);
+  const reportMeta = taxLib.countryMeta(reportCountry);
+  const reportCurrency = reportTax ? reportTax.currency : (company.currency || reportMeta.currency);
+  const reportSymbol = reportTax ? reportTax.currencySymbol : (reportMeta.currencySymbol);
   const details = db.prepare(`
     SELECT je.date, je.entry_no, je.description, jl.vat_amount, jl.vat_type, a.code, a.name AS account_name
     FROM journal_lines jl JOIN journal_entries je ON je.id = jl.entry_id JOIN accounts a ON a.id = jl.account_id
     WHERE jl.vat_amount > 0${bId ? ' AND je.branch_id = ?' : ''} ORDER BY je.date DESC LIMIT 500
   `).all(...(bId ? [bId] : []));
   db.close();
-  res.json({ ...vat, details });
+  res.json({ ...vat, tax_country: reportCountry, tax_label: reportMeta.label, tax_authority: reportMeta.authority, currency: reportCurrency, currency_symbol: reportSymbol, details });
 });
 
 // ==================== العملاء والموردون ====================
@@ -721,7 +733,9 @@ app.post('/api/companies/:companyId/invoices/:invoiceId/resubmit', windowPerm('i
     const inv = invoicesLib.getInvoice(db, req.params.invoiceId);
     if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
     if (inv.kind !== 'sale') { db.close(); return res.status(400).json({ error: 'إعادة الإرسال متاحة لفواتير البيع فقط' }); }
-    const result = await zatcaLib.applyZatca(db, inv, company);
+    const result = inv.tax_country === 'JO'
+      ? await jofotaraLib.applyJoFotara(db, inv, company)
+      : await zatcaLib.applyZatca(db, inv, company);
     db.close();
     res.json(result);
   } catch (e) {
@@ -759,6 +773,64 @@ app.put('/api/companies/:companyId/zatca-settings', windowPerm('settings', 'edit
   const saved = zatcaLib.getConfig(db);
   db.close();
   res.json(zatcaLib.maskConfig(saved));
+});
+
+// ==================== الفاتورة الوطنية الأردنية (JoFotara) ====================
+app.get('/api/companies/:companyId/jofotara-settings', windowPerm('settings', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const config = jofotaraLib.getConfig(db);
+  db.close();
+  res.json(jofotaraLib.maskConfig(config));
+});
+
+app.put('/api/companies/:companyId/jofotara-settings', windowPerm('settings', 'edit'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const b = req.body;
+  const existing = jofotaraLib.getConfig(db);
+  const config = {
+    active: b.active !== undefined ? !!b.active : existing.active,
+    mode: b.mode || existing.mode,
+    baseUrl: b.baseUrl !== undefined ? b.baseUrl : existing.baseUrl,
+    clientId: b.clientId !== undefined ? b.clientId : existing.clientId,
+    clientSecret: b.clientSecret !== undefined ? b.clientSecret : existing.clientSecret,
+    taxNumber: b.taxNumber !== undefined ? b.taxNumber : existing.taxNumber,
+    activityNumber: b.activityNumber !== undefined ? b.activityNumber : existing.activityNumber
+  };
+  jofotaraLib.saveConfig(db, config);
+  const saved = jofotaraLib.getConfig(db);
+  db.close();
+  res.json(jofotaraLib.maskConfig(saved));
+});
+
+app.get('/api/companies/:companyId/invoices/:invoiceId/jofotara', windowPerm('invoices-sale', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const inv = invoicesLib.getInvoice(db, req.params.invoiceId);
+  if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
+  const config = jofotaraLib.getConfig(db);
+  let payload = null;
+  try {
+    payload = jofotaraLib.buildInvoiceData(inv, company, inv.branch_id ? db.prepare('SELECT * FROM branches WHERE id = ?').get(inv.branch_id) : null, config).payload;
+  } catch (e) { payload = null; }
+  db.close();
+  res.json({
+    invoice_no: inv.invoice_no,
+    kind: inv.kind,
+    tax_country: inv.tax_country,
+    currency: inv.currency,
+    jo_uuid: inv.jo_uuid,
+    jo_qr: inv.jo_qr,
+    jo_status: inv.jo_status,
+    jo_response: inv.jo_response,
+    jo_submitted_at: inv.jo_submitted_at,
+    payload,
+    config: jofotaraLib.maskConfig(config)
+  });
 });
 
 // ==================== ربط الواتساب ====================

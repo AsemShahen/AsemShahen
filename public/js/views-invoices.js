@@ -15,11 +15,25 @@ const InvoicesView = {
     };
   },
   async created() { await this.load(); },
+  watch: {
+    'form.branch_id'(id) {
+      const b = this.branches.find(x => Number(x.id) === Number(id));
+      if (!b) return;
+      if (b.tax_rate_effective !== undefined && b.tax_rate_effective !== null) this.form.vat_rate = Number(b.tax_rate_effective);
+      const w = this.warehouses.find(w => Number(w.branch_id) === Number(id));
+      if (w && !this.warehouses.some(x => Number(x.id) === Number(this.form.warehouse_id) && Number(x.branch_id) === Number(id))) {
+        this.form.warehouse_id = w.id;
+      }
+    }
+  },
   computed: {
     isSale() { return this.kind === 'sale'; },
     title() { return this.isSale ? t('فواتير البيع') : t('فواتير الشراء'); },
     partyType() { return this.isSale ? 'customer' : 'supplier'; },
     win() { return this.isSale ? 'invoices-sale' : 'invoices-purchase'; },
+    formBranch() { return this.branches.find(b => Number(b.id) === Number(this.form.branch_id)) || null; },
+    formTaxMeta() { return taxCountryMeta(this.formBranch ? this.formBranch.tax_country : 'SA'); },
+    formCurrency() { return this.formBranch ? (this.formBranch.currency || this.formTaxMeta.currency) : 'SAR'; },
     branchWarehouses() {
       if (!this.form.branch_id) return this.warehouses;
       return this.warehouses.filter(w => Number(w.branch_id) === Number(this.form.branch_id));
@@ -64,8 +78,11 @@ const InvoicesView = {
     },
     openCreate() {
       const def = this.branches.find(b => b.is_default) || this.branches[0];
+      const defRate = def && def.tax_rate_effective !== undefined && def.tax_rate_effective !== null
+        ? Number(def.tax_rate_effective)
+        : (Number(this.info.settings.vat_rate) || 15);
       this.form = {
-        party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: Number(this.info.settings.vat_rate) || 15,
+        party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: defRate,
         payment_method: 'cash', paid_amount: null, discount: 0, notes: '',
         branch_id: def ? def.id : '',
         warehouse_id: this.warehouses.length ? this.warehouses[0].id : '',
@@ -146,13 +163,21 @@ const InvoicesView = {
     remaining(inv) { return inv.total - inv.paid_amount; },
     async openDetail(inv) {
       this.detailLoading = true;
-      this.detail = { ...inv, zatca: null };
+      this.detail = { ...inv, zatca: null, jo: null };
       this.qrUrl = '';
       try {
-        const z = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/zatca`);
-        this.detail.zatca = z;
-        if (z.qr_data && typeof QRCode !== 'undefined') {
-          this.qrUrl = await QRCode.toDataURL(z.qr_data, { width: 220, margin: 1 });
+        if (inv.tax_country === 'JO') {
+          const j = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/jofotara`);
+          this.detail.jo = j;
+          if (j.jo_qr && typeof QRCode !== 'undefined') {
+            try { this.qrUrl = await QRCode.toDataURL(j.jo_qr, { width: 220, margin: 1 }); } catch (e) { /* QR اختياري */ }
+          }
+        } else {
+          const z = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/zatca`);
+          this.detail.zatca = z;
+          if (z.qr_data && typeof QRCode !== 'undefined') {
+            this.qrUrl = await QRCode.toDataURL(z.qr_data, { width: 220, margin: 1 });
+          }
         }
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.detailLoading = false; }
@@ -167,11 +192,25 @@ const InvoicesView = {
       a.click();
       URL.revokeObjectURL(url);
     },
+    downloadJoPayload() {
+      if (!this.detail || !this.detail.jo || !this.detail.jo.payload) return;
+      const blob = new Blob([JSON.stringify(this.detail.jo.payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${this.detail.invoice_no}-jofotara.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
     async resubmitZatca() {
       this.detailLoading = true;
       try {
         const inv = await this.api(`/api/companies/${this.company.id}/invoices/${this.detail.id}/resubmit`, { method: 'POST' });
-        this.toast(inv.zatca_status === 'failed' ? t('فشل الإرسال إلى هيئة الزكاة: {msg}', { msg: inv.zatca_response || '' }) : t('تم إرسال الفاتورة إلى هيئة الزكاة'));
+        if (this.detail && this.detail.tax_country === 'JO') {
+          this.toast(inv.jo_status === 'failed' ? t('فشل الإرسال إلى JoFotara: {msg}', { msg: inv.jo_response || '' }) : t('تم إرسال الفاتورة إلى JoFotara'));
+        } else {
+          this.toast(inv.zatca_status === 'failed' ? t('فشل الإرسال إلى هيئة الزكاة: {msg}', { msg: inv.zatca_response || '' }) : t('تم إرسال الفاتورة إلى هيئة الزكاة'));
+        }
         this.detail = null;
         await this.load();
       } catch (e) { this.toast(e.message, 'error'); }
@@ -270,7 +309,7 @@ const InvoicesView = {
               <tr>
                 <th>{{ t('رقم الفاتورة') }}</th><th>{{ isSale ? t('العميل') : t('المورد') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('التاريخ') }}</th>
                 <th>{{ t('الإجمالي') }}</th><th>{{ t('الضريبة') }}</th><th>{{ t('طريقة الدفع') }}</th><th>{{ t('المدفوع') }}</th><th>{{ t('الحالة') }}</th>
-                <th v-if="isSale">{{ t('الفاتورة الإلكترونية (ZATCA)') }}</th><th></th>
+                <th v-if="isSale">{{ t('الفاتورة الإلكترونية') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -279,13 +318,13 @@ const InvoicesView = {
                 <td>{{ i.party ? i.party.name : '—' }}</td>
                 <td>{{ branchName(i.branch_id) }}</td>
                 <td>{{ fmt.date(i.date) }}</td>
-                <td class="num">{{ fmt.money(i.total) }}</td>
-                <td class="num">{{ fmt.money(i.vat) }}</td>
+                <td class="num">{{ fmt.moneyFor(i.total, i.currency) }}</td>
+                <td class="num">{{ fmt.moneyFor(i.vat, i.currency) }}</td>
                 <td>{{ fmt.payMethod(i.payment_method, methods) }}</td>
-                <td class="num">{{ fmt.money(i.paid_amount) }}</td>
+                <td class="num">{{ fmt.moneyFor(i.paid_amount, i.currency) }}</td>
                 <td><span class="badge" :class="fmt.invStatus(i.status).c">{{ fmt.invStatus(i.status).t }}</span></td>
                 <td v-if="isSale">
-                  <span class="badge" :class="fmt.zatcaStatus(i.zatca_status).c">{{ fmt.zatcaStatus(i.zatca_status).t }}</span>
+                  <span class="badge" :class="fmt.einvoiceStatus(i.tax_country, i.tax_country === 'JO' ? i.jo_status : i.zatca_status).c">{{ fmt.einvoiceStatus(i.tax_country, i.tax_country === 'JO' ? i.jo_status : i.zatca_status).t }}</span>
                 </td>
                 <td>
                   <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">{{ t('تحصيل / سداد') }}</button>
@@ -318,6 +357,9 @@ const InvoicesView = {
             </select>
           </label>
           <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.vat_rate"></label>
+          <label class="span2" v-if="formBranch">
+            <span class="muted" style="font-size:12px;">{{ t('نظام الضريبة') }}: {{ t(formTaxMeta.label) }} ({{ form.vat_rate || 0 }}%) — {{ t('العملة') }}: {{ formCurrency }} {{ fmt.currencySymbol(formCurrency) }}</span>
+          </label>
           <label>{{ t('طريقة الدفع') }}
             <select v-model="form.payment_method">
               <option v-for="m in methods" :key="m.code" :value="m.code">{{ m.name }}</option>
@@ -358,7 +400,7 @@ const InvoicesView = {
             <input type="number" v-model.number="l.qty" min="0">
             <input type="number" v-model.number="l.unit_price" min="0">
             <input type="number" v-model.number="l.discount" min="0">
-            <span class="num">{{ fmt.money((Number(l.qty)||0) * (Number(l.unit_price)||0) - (Number(l.discount)||0)) }}</span>
+            <span class="num">{{ fmt.moneyFor((Number(l.qty)||0) * (Number(l.unit_price)||0) - (Number(l.discount)||0), formCurrency) }}</span>
             <button class="btn btn-sm btn-danger" @click="removeLine(idx)" v-if="form.lines.length > 1">✕</button>
           </div>
         </div>
@@ -366,9 +408,9 @@ const InvoicesView = {
         <div class="flex-between mt-2">
           <button class="btn btn-ghost" @click="addLine">+ {{ t('إضافة صنف') }}</button>
           <div style="text-align:left;">
-            <div>{{ t('الإجمالي قبل الضريبة:') }} <strong class="monospace">{{ fmt.money(taxable()) }}</strong></div>
-            <div>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }} <strong class="monospace">{{ fmt.money(vatAmount()) }}</strong></div>
-            <div style="font-size:16px;">{{ t('الإجمالي:') }} <strong class="monospace" style="color:var(--primary);">{{ fmt.money(total()) }}</strong></div>
+            <div>{{ t('الإجمالي قبل الضريبة:') }} <strong class="monospace">{{ fmt.moneyFor(taxable(), formCurrency) }}</strong></div>
+            <div>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }} <strong class="monospace">{{ fmt.moneyFor(vatAmount(), formCurrency) }}</strong></div>
+            <div style="font-size:16px;">{{ t('الإجمالي:') }} <strong class="monospace" style="color:var(--primary);">{{ fmt.moneyFor(total(), formCurrency) }}</strong></div>
           </div>
         </div>
 
@@ -428,6 +470,31 @@ const InvoicesView = {
                 <button class="btn btn-sm btn-ghost" @click="downloadXml" :disabled="!detail.zatca.xml_data">{{ t('تحميل XML') }}</button>
                 <button v-if="detail.party && detail.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(detail)">💬 {{ t('إرسال عبر واتساب') }}</button>
                 <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى ZATCA') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="detail.jo">
+          <div class="flex flex-wrap" style="gap:20px;align-items:flex-start;">
+            <div style="text-align:center;">
+              <img v-if="qrUrl" :src="qrUrl" alt="QR" style="border:1px solid #ddd;border-radius:8px;background:#fff;padding:6px;width:220px;height:220px;">
+              <div v-else class="muted">{{ t('لا يمكن عرض QR (يُستلم من JoFotara بعد الإرسال)') }}</div>
+            </div>
+            <div style="flex:1;min-width:260px;">
+              <table class="kv">
+                <tr><td>{{ t('رقم الفاتورة') }}</td><td class="monospace">{{ detail.jo.invoice_no }}</td></tr>
+                <tr><td>{{ t('نظام الضريبة') }}</td><td>{{ t('ضريبة المبيعات') }}</td></tr>
+                <tr><td>{{ t('معرّف الفاتورة (UUID)') }}</td><td class="monospace" style="font-size:12px;">{{ detail.jo.jo_uuid || '—' }}</td></tr>
+                <tr><td>{{ t('حالة الإرسال') }}</td><td><span class="badge" :class="fmt.joStatus(detail.jo.jo_status).c">{{ fmt.joStatus(detail.jo.jo_status).t }}</span></td></tr>
+                <tr v-if="detail.jo.jo_submitted_at"><td>{{ t('تاريخ الإرسال') }}</td><td class="monospace">{{ detail.jo.jo_submitted_at }}</td></tr>
+                <tr v-if="detail.jo.jo_response && detail.jo.jo_status !== 'submitted'">
+                  <td>{{ t('ملاحظة النظام') }}</td><td class="muted" style="font-size:12px;">{{ detail.jo.jo_response }}</td>
+                </tr>
+              </table>
+              <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-ghost" @click="downloadJoPayload" :disabled="!detail.jo.payload">{{ t('تحميل حمولة الفاتورة (JSON)') }}</button>
+                <button v-if="detail.party && detail.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(detail)">💬 {{ t('إرسال عبر واتساب') }}</button>
+                <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى JoFotara') }}</button>
               </div>
             </div>
           </div>

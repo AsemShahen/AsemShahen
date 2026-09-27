@@ -118,13 +118,19 @@
                 <option v-for="bt in businessTypes" :key="bt.code" :value="bt.code">{{ t(bt.label) }}</option>
               </select>
             </label>
+            <label>{{ t('الدولة / نظام الضريبة') }}
+              <select v-model="newCompany.tax_country">
+                <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
+                <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
+              </select>
+            </label>
             <label>{{ t('رقم السجل التجاري') }}
               <input v-model.trim="newCompany.cr_number" :placeholder="t('مثال: 1010123456')" dir="ltr">
             </label>
             <label>{{ t('الرقم الضريبي') }}
               <input v-model.trim="newCompany.vat_number" :placeholder="t('مثال: 310123456700003')" dir="ltr">
             </label>
-            <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }}
+            <label>{{ t('نسبة الضريبة الافتراضية (%)') }}
               <input type="number" v-model.number="newCompany.vat_rate" min="0" max="100" step="any">
             </label>
             <label>{{ t('بداية السنة المالية') }}
@@ -171,13 +177,19 @@
                 <option v-for="bt in businessTypes" :key="bt.code" :value="bt.code">{{ t(bt.label) }}</option>
               </select>
             </label>
+            <label>{{ t('الدولة / نظام الضريبة') }}
+              <select v-model="editForm.tax_country">
+                <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
+                <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
+              </select>
+            </label>
             <label>{{ t('رقم السجل التجاري') }}
               <input v-model.trim="editForm.cr_number" dir="ltr">
             </label>
             <label>{{ t('الرقم الضريبي') }}
               <input v-model.trim="editForm.vat_number" dir="ltr">
             </label>
-            <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }}
+            <label>{{ t('نسبة الضريبة الافتراضية (%)') }}
               <input type="number" v-model.number="editForm.vat_rate" min="0" max="100" step="any">
             </label>
             <label>{{ t('بداية السنة المالية') }}
@@ -305,23 +317,23 @@
     </div>
   </div>
 
-  <script src="/js/i18n.js?v=27"></script>
-  <script src="/js/views-common.js?v=25"></script>
+  <script src="/js/i18n.js?v=28"></script>
+  <script src="/js/views-common.js?v=26"></script>
   <script src="/js/views-chat.js?v=21"></script>
   <script src="/js/views-dashboard.js?v=22"></script>
   <script src="/js/views-accounts.js?v=22"></script>
-  <script src="/js/views-reports.js?v=22"></script>
-  <script src="/js/views-invoices.js?v=22"></script>
+  <script src="/js/views-reports.js?v=23"></script>
+  <script src="/js/views-invoices.js?v=23"></script>
   <script src="/js/views-inventory.js?v=23"></script>
   <script src="/js/views-hr.js?v=21"></script>
-  <script src="/js/views-closing.js?v=21"></script>
+  <script src="/js/views-closing.js?v=22"></script>
   <script src="/js/views-users.js?v=23"></script>
-  <script src="/js/views-branches.js?v=1"></script>
+  <script src="/js/views-branches.js?v=2"></script>
   <script src="/js/views-hospital.js?v=21"></script>
   <script src="/js/views-restaurant.js?v=21"></script>
   <script src="/js/views-hotel.js?v=23"></script>
   <script src="/js/views-manufacturing.js?v=26"></script>
   <script src="/js/views-activity.js?v=2"></script>
-  <script src="/js/app.js?v=25"></script>
+  <script src="/js/app.js?v=26"></script>
 </body>
 </html>

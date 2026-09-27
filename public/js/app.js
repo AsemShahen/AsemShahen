@@ -65,7 +65,7 @@ const App = {
       openCreateCompany: false,
       newCompany: {
         name: '', business_type: 'corporate', cr_number: '', vat_number: '',
-        vat_rate: 15, fiscal_year_start_date: '', fiscal_year_end_date: '',
+        vat_rate: 15, tax_country: 'SA', fiscal_year_start_date: '', fiscal_year_end_date: '',
         address: '', phone: '', email: '', adminUsername: '', adminPassword: ''
       },
       // تعديل شركة
@@ -184,7 +184,7 @@ const App = {
     resetNewCompany() {
       this.newCompany = {
         name: '', business_type: 'corporate', cr_number: '', vat_number: '',
-        vat_rate: 15, fiscal_year_start_date: '', fiscal_year_end_date: '',
+        vat_rate: 15, tax_country: 'SA', fiscal_year_start_date: '', fiscal_year_end_date: '',
         address: '', phone: '', email: '', adminUsername: '', adminPassword: ''
       };
     },

@@ -13,7 +13,18 @@ const BranchesView = {
   },
   async created() { await this.load(); },
   computed: {
-    isAdmin() { return isCompanyAdminUser(getAuthUser(), this.company.id); }
+    isAdmin() { return isCompanyAdminUser(getAuthUser(), this.company.id); },
+    formTaxMeta() { return taxCountryMeta(this.form.tax_country); }
+  },
+  watch: {
+    'form.tax_country'(code) {
+      const meta = taxCountryMeta(code);
+      this.form.currency = meta.currency;
+      this.form.currency_symbol = meta.symbol;
+      if (this.form.tax_rate === null || this.form.tax_rate === undefined || this.form.tax_rate === '') {
+        this.form.tax_rate = meta.rate;
+      }
+    }
   },
   methods: {
     async load() {
@@ -23,7 +34,13 @@ const BranchesView = {
       finally { this.loading = false; }
     },
     emptyForm() {
-      return { code: '', name: '', address: '', phone: '', manager: '', notes: '', is_default: false, is_active: true };
+      return {
+        code: '', name: '', address: '', phone: '', manager: '', notes: '',
+        tax_country: 'SA', tax_rate: taxCountryMeta('SA').rate,
+        currency: 'SAR', currency_symbol: 'ر.س', tax_number: '',
+        jofotara_activity_number: '', jofotara_income_source_sequence: '',
+        is_default: false, is_active: true
+      };
     },
     openCreate() {
       this.editing = null;
@@ -35,6 +52,13 @@ const BranchesView = {
       this.form = {
         code: b.code, name: b.name, address: b.address || '', phone: b.phone || '',
         manager: b.manager || '', notes: b.notes || '',
+        tax_country: b.tax_country || 'SA',
+        tax_rate: b.tax_rate_effective !== undefined && b.tax_rate_effective !== null ? Number(b.tax_rate_effective) : taxCountryMeta(b.tax_country).rate,
+        currency: b.currency || taxCountryMeta(b.tax_country).currency,
+        currency_symbol: b.currency_symbol || taxCountryMeta(b.tax_country).symbol,
+        tax_number: b.tax_number || '',
+        jofotara_activity_number: b.jofotara_activity_number || '',
+        jofotara_income_source_sequence: b.jofotara_income_source_sequence || '',
         is_default: !!b.is_default, is_active: !!b.is_active
       };
       this.showModal = true;
@@ -89,6 +113,7 @@ const BranchesView = {
             <thead>
               <tr>
                 <th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('المدير') }}</th>
+                <th>{{ t('الضريبة') }}</th><th>{{ t('العملة') }}</th>
                 <th>{{ t('الهاتف') }}</th><th>{{ t('مستودعات') }}</th><th>{{ t('فواتير') }}</th>
                 <th>{{ t('الحالة') }}</th><th v-if="isAdmin"></th>
               </tr>
@@ -100,6 +125,11 @@ const BranchesView = {
                   <span v-if="b.is_default" class="badge green" style="margin-right:6px;">{{ t('افتراضي') }}</span>
                 </td>
                 <td>{{ b.manager || '—' }}</td>
+                <td>
+                  <span class="badge" :class="b.tax_country === 'JO' ? 'blue' : 'green'">{{ t(b.tax_label) }}</span>
+                  <span class="muted" style="font-size:12px;"> {{ b.tax_rate_effective }}%</span>
+                </td>
+                <td dir="ltr">{{ b.currency }} <span class="muted">{{ b.currency_symbol }}</span></td>
                 <td dir="ltr">{{ b.phone || '—' }}</td>
                 <td>{{ b.warehouses_count }}</td>
                 <td>{{ b.invoices_count }}</td>
@@ -109,7 +139,7 @@ const BranchesView = {
                   <button class="btn btn-sm btn-danger" @click="confirmDelete(b)" v-if="!b.is_default">{{ t('حذف') }}</button>
                 </td>
               </tr>
-              <tr v-if="!branches.length"><td :colspan="isAdmin ? 8 : 7" class="muted">{{ t('لا توجد فروع') }}</td></tr>
+              <tr v-if="!branches.length"><td :colspan="isAdmin ? 10 : 9" class="muted">{{ t('لا توجد فروع') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -138,6 +168,20 @@ const BranchesView = {
           <label>{{ t('ملاحظات') }}
             <input v-model.trim="form.notes">
           </label>
+          <label>{{ t('نظام الضريبة') }}
+            <select v-model="form.tax_country">
+              <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
+              <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
+            </select>
+          </label>
+          <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.tax_rate" min="0" max="100"></label>
+          <label>{{ t('العملة') }} <input v-model.trim="form.currency" dir="ltr" placeholder="SAR / JOD"></label>
+          <label>{{ t('رمز العملة') }} <input v-model.trim="form.currency_symbol"></label>
+          <label>{{ t('الرقم الضريبي للفرع (اختياري)') }} <input v-model.trim="form.tax_number" dir="ltr"></label>
+          <template v-if="form.tax_country === 'JO'">
+            <label>{{ t('رقم النشاط (JoFotara)') }} <input v-model.trim="form.jofotara_activity_number" dir="ltr"></label>
+            <label>{{ t('تسلسل مصدر الدخل (JoFotara)') }} <input v-model.trim="form.jofotara_income_source_sequence" dir="ltr"></label>
+          </template>
           <label class="flex" style="flex-direction:row;align-items:center;gap:8px;">
             <input type="checkbox" v-model="form.is_default" style="width:auto;"> {{ t('الفرع الافتراضي') }}
           </label>

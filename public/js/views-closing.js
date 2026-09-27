@@ -138,6 +138,7 @@ const SettingsView = {
     return {
       tab: 'company',
       form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false,
+      jofotara: null, jofotaraForm: {}, savingJo: false,
       whatsapp: null, waForm: {}, savingWa: false,
       dbInfo: null, dbBusy: false, dbResult: null
     };
@@ -152,6 +153,7 @@ const SettingsView = {
       cr_number: this.company.cr_number,
       vat_number: this.company.vat_number,
       vat_rate: Number(this.info.settings.vat_rate) || 15,
+      tax_country: this.company.tax_country || 'SA',
       currency: this.company.currency || 'SAR',
       fiscal_year_start_month: Number(this.company.fiscal_year_start_month) || 1,
       address: this.company.address,
@@ -159,6 +161,7 @@ const SettingsView = {
       email: this.company.email
     };
     this.loadZatca();
+    this.loadJofotara();
     this.loadWhatsapp();
   },
   methods: {
@@ -206,6 +209,39 @@ const SettingsView = {
     switchTab(tab) {
       this.tab = tab;
       if (tab === 'db') this.loadDbTools();
+    },
+    async loadJofotara() {
+      try {
+        const j = await this.api(`/api/companies/${this.company.id}/jofotara-settings`);
+        this.jofotara = j;
+        this.jofotaraForm = {
+          active: !!j.active,
+          mode: j.mode,
+          baseUrl: j.baseUrl,
+          clientId: '',
+          clientSecret: '',
+          taxNumber: '',
+          activityNumber: j.activityNumber || ''
+        };
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async saveJofotara() {
+      this.savingJo = true;
+      try {
+        const body = {
+          active: this.jofotaraForm.active,
+          mode: this.jofotaraForm.mode,
+          baseUrl: this.jofotaraForm.baseUrl,
+          activityNumber: this.jofotaraForm.activityNumber
+        };
+        if (this.jofotaraForm.clientId) body.clientId = this.jofotaraForm.clientId;
+        if (this.jofotaraForm.clientSecret) body.clientSecret = this.jofotaraForm.clientSecret;
+        if (this.jofotaraForm.taxNumber) body.taxNumber = this.jofotaraForm.taxNumber;
+        const saved = await this.api(`/api/companies/${this.company.id}/jofotara-settings`, { method: 'PUT', body });
+        this.toast(saved.configured ? t('تم حفظ بيانات JoFotara وسيتم إرسال فواتير الفروع الأردنية تلقائياً') : t('تم الحفظ. أضف بيانات الاعتماد لتفعيل الإرسال التلقائي إلى JoFotara'));
+        await this.loadJofotara();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.savingJo = false; }
     },
     async loadWhatsapp() {
       try {
@@ -350,6 +386,7 @@ const SettingsView = {
     <div class="flex flex-wrap mb-2" style="gap:8px;">
       <button class="btn btn-sm" :class="tab === 'company' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('company')">{{ t('بيانات الشركة') }}</button>
       <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'jofotara' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('jofotara')">{{ t('الفاتورة الوطنية الأردنية (JoFotara)') }}</button>
       <button class="btn btn-sm" :class="tab === 'whatsapp' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('whatsapp')">{{ t('الواتساب') }}</button>
       <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
     </div>
@@ -363,6 +400,12 @@ const SettingsView = {
           <label>{{ t('نوع النشاط') }}
             <select v-model="form.business_type" disabled>
               <option v-for="bt in [['corporate','شركة'],['supermarket','سوبر ماركت'],['factory','مصنع'],['medical_lab','مخبر طبي']]" :key="bt[0]" :value="bt[0]">{{ t(bt[1]) }}</option>
+            </select>
+          </label>
+          <label>{{ t('الدولة / نظام الضريبة الافتراضي') }}
+            <select v-model="form.tax_country">
+              <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
+              <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
             </select>
           </label>
           <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }} <input type="number" v-model.number="form.vat_rate" min="0" max="100"></label>
@@ -439,6 +482,59 @@ const SettingsView = {
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveZatca" :disabled="savingZatca">{{ savingZatca ? t('جارٍ الحفظ...') : t('حفظ إعدادات ZATCA') }}</button>
           <span class="muted" v-if="zatca && !zatca.csidSet">{{ t('الرقم الضريبي للمنشأة يُقرأ من "بيانات الشركة" أعلاه.') }}</span>
+        </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'jofotara'">
+    <div class="panel" style="max-width:800px;border-top:4px solid var(--primary);">
+      <div class="panel-header"><h3>{{ t('الفاتورة الإلكترونية والربط مع نظام الفاتورة الوطنية الأردني (JoFotara)') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('تُطبّق هذه الإعدادات على الفروع التي نظامها الضريبي "الأردن". عند تفعيلها تُرسل فواتير البيع تلقائياً إلى منظومة الفاتورة الوطنية الأردنية.') }}
+          <ul style="margin-top:8px;padding-right:18px;">
+            <li>{{ t('يلزم الحصول على بيانات الاعتماد (Client ID / Client Secret) ورقم النشاط من بوابة الفاتورة الوطنية.') }}</li>
+            <li>{{ t('يُحدَّد الرقم الضريبي ورقم النشاط وتسلسل مصدر الدخل لكل فرع من نافذة الفروع.') }}</li>
+          </ul>
+        </div>
+
+        <div v-if="jofotara" class="flex flex-wrap" style="gap:8px;margin-bottom:14px;">
+          <span class="badge" :class="jofotara.active ? 'green' : 'gray'">{{ jofotara.active ? t('التفعيل مفعّل') : t('غير مفعّل') }}</span>
+          <span class="badge" :class="jofotara.configured ? 'green' : 'yellow'">{{ jofotara.configured ? t('جاهز للإرسال') : t('ينقص بيانات الاعتماد') }}</span>
+          <span class="badge gray">{{ jofotara.mode === 'production' ? t('وضع الإنتاج') : t('وضع التجربة (Sandbox)') }}</span>
+        </div>
+
+        <div class="form-grid">
+          <label class="span2 flex" style="flex-direction:row;gap:8px;">
+            <input type="checkbox" v-model="jofotaraForm.active" style="width:auto;"> {{ t('تفعيل الإرسال التلقائي إلى JoFotara') }}
+          </label>
+          <label>{{ t('الوضع') }}
+            <select v-model="jofotaraForm.mode">
+              <option value="sandbox">{{ t('Sandbox (تجربة)') }}</option>
+              <option value="production">{{ t('Production (إنتاج)') }}</option>
+            </select>
+          </label>
+          <label>{{ t('عنوان منظومة الفاتورة (اختياري)') }}
+            <input v-model.trim="jofotaraForm.baseUrl" dir="ltr" placeholder="https://backend.jofotara.gov.jo/core">
+          </label>
+          <label>{{ t('الرقم الضريبي للمنشأة (JoFotara)') }}
+            <input v-model.trim="jofotaraForm.taxNumber" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+          <label>{{ t('رقم النشاط الافتراضي') }}
+            <input v-model.trim="jofotaraForm.activityNumber" dir="ltr">
+          </label>
+          <label class="span2">{{ t('Client ID') }}
+            <input v-model.trim="jofotaraForm.clientId" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+          <label class="span2">{{ t('Client Secret') }}
+            <input type="password" v-model.trim="jofotaraForm.clientSecret" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+        </div>
+
+        <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveJofotara" :disabled="savingJo">{{ savingJo ? t('جارٍ الحفظ...') : t('حفظ إعدادات JoFotara') }}</button>
+          <span class="muted" v-if="jofotara && !jofotara.clientIdSet">{{ t('الرقم الضريبي للفرع يُقرأ من "الفروع"، ويمكن تعيينه هنا كقيمة افتراضية.') }}</span>
         </div>
       </div>
     </div>

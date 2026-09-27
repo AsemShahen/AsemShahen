@@ -1,10 +1,28 @@
 'use strict';
 
 // ==================== أدوات مساعدة للعرض ====================
+// أنظمة الضريبة حسب الدولة (تطابق lib/tax.js في الخادم)
+const TAX_COUNTRIES_META = {
+  SA: { label: 'ضريبة القيمة المضافة', labelEn: 'Value Added Tax', rate: 15, currency: 'SAR', symbol: 'ر.س' },
+  JO: { label: 'ضريبة المبيعات', labelEn: 'General Sales Tax', rate: 16, currency: 'JOD', symbol: 'د.أ' }
+};
+function taxCountryMeta(code) {
+  return TAX_COUNTRIES_META[String(code || '').toUpperCase()] || TAX_COUNTRIES_META.SA;
+}
+function currencySymbol(code) {
+  return taxCountryMeta(code).symbol;
+}
+function taxCountryLabel(code) {
+  return t(taxCountryMeta(code).label);
+}
+
 const fmt = {
   money(v, currency = t('ر.س')) {
     const n = Number(v) || 0;
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+  },
+  moneyFor(v, code) {
+    return fmt.money(v, currencySymbol(code));
   },
   num(v) {
     return (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -41,7 +59,22 @@ const fmt = {
   },
   zatcaType(type) {
     return { standard: t('قياسية (B2B)'), simplified: t('مبسطة (B2C)') }[type] || type || '—';
-  }
+  },
+  joStatus(s) {
+    return {
+      not_configured: { t: t('لم تُرسل (غير مُفعّل)'), c: 'gray' },
+      submitting: { t: t('جارٍ الإرسال...'), c: 'yellow' },
+      submitted: { t: t('تم الإرسال'), c: 'green' },
+      failed: { t: t('فشل الإرسال'), c: 'red' }
+    }[s] || { t: '—', c: 'gray' };
+  },
+  einvoiceStatus(country, s) {
+    return country === 'JO' ? fmt.joStatus(s) : fmt.zatcaStatus(s);
+  },
+  einvoiceName(country) {
+    return country === 'JO' ? t('الفاتورة الوطنية (JoFotara)') : t('الفاتورة الإلكترونية (ZATCA)');
+  },
+  currencySymbol: currencySymbol
 };
 
 const typesMeta = {
