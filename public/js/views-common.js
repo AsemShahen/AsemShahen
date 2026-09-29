@@ -3,8 +3,10 @@
 // ==================== أدوات مساعدة للعرض ====================
 // أنظمة الضريبة حسب الدولة (تطابق lib/tax.js في الخادم)
 const TAX_COUNTRIES_META = {
-  SA: { label: 'ضريبة القيمة المضافة', labelEn: 'Value Added Tax', rate: 15, currency: 'SAR', symbol: 'ر.س' },
-  JO: { label: 'ضريبة المبيعات', labelEn: 'General Sales Tax', rate: 16, currency: 'JOD', symbol: 'د.أ' }
+  SA: { label: 'ضريبة القيمة المضافة', labelEn: 'Value Added Tax', rate: 15, currency: 'SAR', symbol: 'ر.س', einvoice: 'zatca' },
+  JO: { label: 'ضريبة المبيعات', labelEn: 'General Sales Tax', rate: 16, currency: 'JOD', symbol: 'د.أ', einvoice: 'jofotara' },
+  SY: { label: 'ضريبة المبيعات', labelEn: 'General Sales Tax', rate: 20, currency: 'SYP', symbol: 'ل.س', einvoice: null },
+  EG: { label: 'ضريبة القيمة المضافة', labelEn: 'Value Added Tax', rate: 14, currency: 'EGP', symbol: 'ج.م', einvoice: 'egypt' }
 };
 function taxCountryMeta(code) {
   return TAX_COUNTRIES_META[String(code || '').toUpperCase()] || TAX_COUNTRIES_META.SA;
@@ -68,12 +70,23 @@ const fmt = {
       failed: { t: t('فشل الإرسال'), c: 'red' }
     }[s] || { t: '—', c: 'gray' };
   },
+  egyptStatus(s) { return fmt.joStatus(s); },
+  einvoiceProvider(country) { return taxCountryMeta(country).einvoice || null; },
   einvoiceStatus(country, s) {
-    return country === 'JO' ? fmt.joStatus(s) : fmt.zatcaStatus(s);
+    const p = taxCountryMeta(country).einvoice;
+    if (p === 'jofotara') return fmt.joStatus(s);
+    if (p === 'egypt') return fmt.egyptStatus(s);
+    if (p === 'zatca') return fmt.zatcaStatus(s);
+    return { t: t('لا ينطبق'), c: 'gray' };
   },
   einvoiceName(country) {
-    return country === 'JO' ? t('الفاتورة الوطنية (JoFotara)') : t('الفاتورة الإلكترونية (ZATCA)');
+    const p = taxCountryMeta(country).einvoice;
+    if (p === 'jofotara') return t('الفاتورة الوطنية (JoFotara)');
+    if (p === 'egypt') return t('الفاتورة الإلكترونية المصرية (ETA)');
+    if (p === 'zatca') return t('الفاتورة الإلكترونية (ZATCA)');
+    return '';
   },
+  hasEinvoice(country) { return !!taxCountryMeta(country).einvoice; },
   currencySymbol: currencySymbol
 };
 

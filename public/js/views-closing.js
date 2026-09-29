@@ -139,6 +139,7 @@ const SettingsView = {
       tab: 'company',
       form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false,
       jofotara: null, jofotaraForm: {}, savingJo: false,
+      egypt: null, egyptForm: {}, savingEg: false,
       whatsapp: null, waForm: {}, savingWa: false,
       dbInfo: null, dbBusy: false, dbResult: null
     };
@@ -162,6 +163,7 @@ const SettingsView = {
     };
     this.loadZatca();
     this.loadJofotara();
+    this.loadEgypt();
     this.loadWhatsapp();
   },
   methods: {
@@ -242,6 +244,41 @@ const SettingsView = {
         await this.loadJofotara();
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.savingJo = false; }
+    },
+    async loadEgypt() {
+      try {
+        const j = await this.api(`/api/companies/${this.company.id}/egypt-settings`);
+        this.egypt = j;
+        this.egyptForm = {
+          active: !!j.active,
+          mode: j.mode,
+          identityUrl: j.identityUrl,
+          apiUrl: j.apiUrl,
+          clientId: '',
+          clientSecret: '',
+          taxNumber: '',
+          activityCode: j.activityCode || ''
+        };
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async saveEgypt() {
+      this.savingEg = true;
+      try {
+        const body = {
+          active: this.egyptForm.active,
+          mode: this.egyptForm.mode,
+          identityUrl: this.egyptForm.identityUrl,
+          apiUrl: this.egyptForm.apiUrl,
+          activityCode: this.egyptForm.activityCode
+        };
+        if (this.egyptForm.clientId) body.clientId = this.egyptForm.clientId;
+        if (this.egyptForm.clientSecret) body.clientSecret = this.egyptForm.clientSecret;
+        if (this.egyptForm.taxNumber) body.taxNumber = this.egyptForm.taxNumber;
+        const saved = await this.api(`/api/companies/${this.company.id}/egypt-settings`, { method: 'PUT', body });
+        this.toast(saved.configured ? t('تم حفظ بيانات ETA وسيتم إرسال فواتير الفروع المصرية تلقائياً') : t('تم الحفظ. أضف بيانات الاعتماد لتفعيل الإرسال التلقائي إلى ETA'));
+        await this.loadEgypt();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.savingEg = false; }
     },
     async loadWhatsapp() {
       try {
@@ -387,6 +424,7 @@ const SettingsView = {
       <button class="btn btn-sm" :class="tab === 'company' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('company')">{{ t('بيانات الشركة') }}</button>
       <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
       <button class="btn btn-sm" :class="tab === 'jofotara' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('jofotara')">{{ t('الفاتورة الوطنية الأردنية (JoFotara)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'egypt' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('egypt')">{{ t('الفاتورة الإلكترونية المصرية (ETA)') }}</button>
       <button class="btn btn-sm" :class="tab === 'whatsapp' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('whatsapp')">{{ t('الواتساب') }}</button>
       <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
     </div>
@@ -406,6 +444,8 @@ const SettingsView = {
             <select v-model="form.tax_country">
               <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
               <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
+              <option value="SY">{{ t('سوريا — ضريبة المبيعات') }}</option>
+              <option value="EG">{{ t('مصر — ضريبة القيمة المضافة') }}</option>
             </select>
           </label>
           <label>{{ t('نسبة ضريبة القيمة المضافة (%)') }} <input type="number" v-model.number="form.vat_rate" min="0" max="100"></label>
@@ -535,6 +575,61 @@ const SettingsView = {
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveJofotara" :disabled="savingJo">{{ savingJo ? t('جارٍ الحفظ...') : t('حفظ إعدادات JoFotara') }}</button>
           <span class="muted" v-if="jofotara && !jofotara.clientIdSet">{{ t('الرقم الضريبي للفرع يُقرأ من "الفروع"، ويمكن تعيينه هنا كقيمة افتراضية.') }}</span>
+        </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'egypt'">
+    <div class="panel" style="max-width:800px;border-top:4px solid var(--primary);">
+      <div class="panel-header"><h3>{{ t('الفاتورة الإلكترونية المصرية (ETA)') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('تُطبّق هذه الإعدادات على الفروع التي نظامها الضريبي "مصر". عند تفعيلها تُرسل فواتير البيع تلقائياً إلى منظومة الفاتورة الإلكترونية لمصلحة الضرائب المصرية.') }}
+          <ul style="margin-top:8px;padding-right:18px;">
+            <li>{{ t('يلزم الحصول على بيانات الاعتماد (Client ID / Client Secret) والرقم الضريبي من بوابة مصلحة الضرائب المصرية.') }}</li>
+            <li>{{ t('يُحدَّد الرقم الضريبي وكود النشاط الضريبي لكل فرع من نافذة الفروع.') }}</li>
+          </ul>
+        </div>
+
+        <div v-if="egypt" class="flex flex-wrap" style="gap:8px;margin-bottom:14px;">
+          <span class="badge" :class="egypt.active ? 'green' : 'gray'">{{ egypt.active ? t('التفعيل مفعّل') : t('غير مفعّل') }}</span>
+          <span class="badge" :class="egypt.configured ? 'green' : 'yellow'">{{ egypt.configured ? t('جاهز للإرسال') : t('ينقص بيانات الاعتماد') }}</span>
+          <span class="badge gray">{{ egypt.mode === 'production' ? t('وضع الإنتاج') : t('وضع التجربة (Sandbox)') }}</span>
+        </div>
+
+        <div class="form-grid">
+          <label class="span2 flex" style="flex-direction:row;gap:8px;">
+            <input type="checkbox" v-model="egyptForm.active" style="width:auto;"> {{ t('تفعيل الإرسال التلقائي إلى ETA') }}
+          </label>
+          <label>{{ t('الوضع') }}
+            <select v-model="egyptForm.mode">
+              <option value="sandbox">{{ t('Sandbox (تجربة)') }}</option>
+              <option value="production">{{ t('Production (إنتاج)') }}</option>
+            </select>
+          </label>
+          <label>{{ t('عنوان منصة الهوية (اختياري)') }}
+            <input v-model.trim="egyptForm.identityUrl" dir="ltr" placeholder="https://id.preprod.eta.gov.eg">
+          </label>
+          <label>{{ t('عنوان منظومة الفاتورة (اختياري)') }}
+            <input v-model.trim="egyptForm.apiUrl" dir="ltr" placeholder="https://api.preprod.invoicing.eta.gov.eg">
+          </label>
+          <label>{{ t('الرقم الضريبي للمنشأة (ETA)') }}
+            <input v-model.trim="egyptForm.taxNumber" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+          <label>{{ t('كود النشاط الضريبي الافتراضي') }}
+            <input v-model.trim="egyptForm.activityCode" dir="ltr">
+          </label>
+          <label class="span2">{{ t('Client ID') }}
+            <input v-model.trim="egyptForm.clientId" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+          <label class="span2">{{ t('Client Secret') }}
+            <input type="password" v-model.trim="egyptForm.clientSecret" dir="ltr" :placeholder="t('يُترك فارغاً للاحتفاظ بالموجود')">
+          </label>
+        </div>
+
+        <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveEgypt" :disabled="savingEg">{{ savingEg ? t('جارٍ الحفظ...') : t('حفظ إعدادات ETA') }}</button>
         </div>
       </div>
     </div>

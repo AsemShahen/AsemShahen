@@ -10,6 +10,7 @@ const partiesLib = require('./lib/parties');
 const chartsLib = require('./lib/charts');
 const zatcaLib = require('./lib/zatca');
 const jofotaraLib = require('./lib/jofotara');
+const egyptLib = require('./lib/egypt');
 const taxLib = require('./lib/tax');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
@@ -733,9 +734,13 @@ app.post('/api/companies/:companyId/invoices/:invoiceId/resubmit', windowPerm('i
     const inv = invoicesLib.getInvoice(db, req.params.invoiceId);
     if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
     if (inv.kind !== 'sale') { db.close(); return res.status(400).json({ error: 'إعادة الإرسال متاحة لفواتير البيع فقط' }); }
-    const result = inv.tax_country === 'JO'
+    const provider = taxLib.countryMeta(inv.tax_country).einvoice;
+    if (!provider) { db.close(); return res.status(400).json({ error: 'لا يوجد ربط فاتورة إلكترونية لهذا النظام الضريبي' }); }
+    const result = provider === 'jofotara'
       ? await jofotaraLib.applyJoFotara(db, inv, company)
-      : await zatcaLib.applyZatca(db, inv, company);
+      : provider === 'egypt'
+        ? await egyptLib.applyEgypt(db, inv, company)
+        : await zatcaLib.applyZatca(db, inv, company);
     db.close();
     res.json(result);
   } catch (e) {
@@ -804,6 +809,64 @@ app.put('/api/companies/:companyId/jofotara-settings', windowPerm('settings', 'e
   const saved = jofotaraLib.getConfig(db);
   db.close();
   res.json(jofotaraLib.maskConfig(saved));
+});
+
+app.get('/api/companies/:companyId/egypt-settings', windowPerm('settings', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const config = egyptLib.getConfig(db);
+  db.close();
+  res.json(egyptLib.maskConfig(config));
+});
+
+app.put('/api/companies/:companyId/egypt-settings', windowPerm('settings', 'edit'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const b = req.body;
+  const existing = egyptLib.getConfig(db);
+  const config = {
+    active: b.active !== undefined ? !!b.active : existing.active,
+    mode: b.mode || existing.mode,
+    identityUrl: b.identityUrl !== undefined ? b.identityUrl : existing.identityUrl,
+    apiUrl: b.apiUrl !== undefined ? b.apiUrl : existing.apiUrl,
+    clientId: b.clientId !== undefined ? b.clientId : existing.clientId,
+    clientSecret: b.clientSecret !== undefined ? b.clientSecret : existing.clientSecret,
+    taxNumber: b.taxNumber !== undefined ? b.taxNumber : existing.taxNumber,
+    activityCode: b.activityCode !== undefined ? b.activityCode : existing.activityCode
+  };
+  egyptLib.saveConfig(db, config);
+  const saved = egyptLib.getConfig(db);
+  db.close();
+  res.json(egyptLib.maskConfig(saved));
+});
+
+app.get('/api/companies/:companyId/invoices/:invoiceId/egypt', windowPerm('invoices-sale', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const inv = invoicesLib.getInvoice(db, req.params.invoiceId);
+  if (!inv) { db.close(); return res.status(404).json({ error: 'الفاتورة غير موجودة' }); }
+  const config = egyptLib.getConfig(db);
+  let payload = null;
+  try {
+    payload = egyptLib.buildInvoiceData(inv, company, inv.branch_id ? db.prepare('SELECT * FROM branches WHERE id = ?').get(inv.branch_id) : null, config).payload;
+  } catch (e) { payload = null; }
+  db.close();
+  res.json({
+    invoice_no: inv.invoice_no,
+    kind: inv.kind,
+    tax_country: inv.tax_country,
+    currency: inv.currency,
+    eg_uuid: inv.eg_uuid,
+    eg_qr: inv.eg_qr,
+    eg_status: inv.eg_status,
+    eg_response: inv.eg_response,
+    eg_submitted_at: inv.eg_submitted_at,
+    payload,
+    config: egyptLib.maskConfig(config)
+  });
 });
 
 app.get('/api/companies/:companyId/invoices/:invoiceId/jofotara', windowPerm('invoices-sale', 'view'), (req, res) => {

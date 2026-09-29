@@ -39,6 +39,7 @@ const BranchesView = {
         tax_country: 'SA', tax_rate: taxCountryMeta('SA').rate,
         currency: 'SAR', currency_symbol: 'ر.س', tax_number: '',
         jofotara_activity_number: '', jofotara_income_source_sequence: '',
+        egypt_activity_code: '',
         is_default: false, is_active: true
       };
     },
@@ -59,6 +60,7 @@ const BranchesView = {
         tax_number: b.tax_number || '',
         jofotara_activity_number: b.jofotara_activity_number || '',
         jofotara_income_source_sequence: b.jofotara_income_source_sequence || '',
+        egypt_activity_code: b.egypt_activity_code || '',
         is_default: !!b.is_default, is_active: !!b.is_active
       };
       this.showModal = true;
@@ -126,7 +128,7 @@ const BranchesView = {
                 </td>
                 <td>{{ b.manager || '—' }}</td>
                 <td>
-                  <span class="badge" :class="b.tax_country === 'JO' ? 'blue' : 'green'">{{ t(b.tax_label) }}</span>
+                  <span class="badge" :class="(b.tax_country && b.tax_country !== 'SA') ? 'blue' : 'green'">{{ t(b.tax_label) }}</span>
                   <span class="muted" style="font-size:12px;"> {{ b.tax_rate_effective }}%</span>
                 </td>
                 <td dir="ltr">{{ b.currency }} <span class="muted">{{ b.currency_symbol }}</span></td>
@@ -172,6 +174,8 @@ const BranchesView = {
             <select v-model="form.tax_country">
               <option value="SA">{{ t('السعودية — ضريبة القيمة المضافة') }}</option>
               <option value="JO">{{ t('الأردن — ضريبة المبيعات') }}</option>
+              <option value="SY">{{ t('سوريا — ضريبة المبيعات') }}</option>
+              <option value="EG">{{ t('مصر — ضريبة القيمة المضافة') }}</option>
             </select>
           </label>
           <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.tax_rate" min="0" max="100"></label>
@@ -181,6 +185,9 @@ const BranchesView = {
           <template v-if="form.tax_country === 'JO'">
             <label>{{ t('رقم النشاط (JoFotara)') }} <input v-model.trim="form.jofotara_activity_number" dir="ltr"></label>
             <label>{{ t('تسلسل مصدر الدخل (JoFotara)') }} <input v-model.trim="form.jofotara_income_source_sequence" dir="ltr"></label>
+          </template>
+          <template v-if="form.tax_country === 'EG'">
+            <label>{{ t('كود النشاط الضريبي (ETA)') }} <input v-model.trim="form.egypt_activity_code" dir="ltr"></label>
           </template>
           <label class="flex" style="flex-direction:row;align-items:center;gap:8px;">
             <input type="checkbox" v-model="form.is_default" style="width:auto;"> {{ t('الفرع الافتراضي') }}

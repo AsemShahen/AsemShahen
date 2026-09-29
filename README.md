@@ -9,9 +9,10 @@ An integrated Arabic (RTL) accounting and business management system operating i
 - **Multi-Company**: Each company has its own database file (`company_<id>.db`), and each account belongs to exactly one company. The platform admin (created at install) provisions companies and audits them, while every company is administered independently by its own company admin.
 - **Multi-Branch**: Companies can define multiple **branches** (code, name, manager, phone, address, notes) with an optional default branch. Warehouses, users, invoices and journal entries can be linked to a branch, and every report and dashboard can be filtered by branch. Each branch has its own tax system, tax rate, currency and tax number. Branch management is available to the company admin only, and existing records are automatically assigned to the default branch.
 - **Activity-Based Chart of Accounts**: Pre-configured charts for corporate, supermarket, factory, medical lab, hospital, restaurant/cafe, and hotel/serviced-apartment businesses.
-- **Dual Tax Systems (Saudi VAT 15% / Jordan Sales Tax 16%)**: The tax system is chosen per branch, with per-branch effective rate and currency (SAR ر.س / JOD د.أ) and tax reports that follow the branch.
+- **Multi-Country Tax Systems (Saudi VAT 15% / Jordan Sales Tax 16% / Syria Sales Tax 20% / Egypt VAT 14%)**: The tax system is chosen per branch, with per-branch effective rate and currency (SAR ر.س / JOD د.أ / SYP ل.س / EGP ج.م) and tax reports that follow the branch.
 - **ZATCA E-Invoicing**: Generates compliant e-invoices for the Saudi ZATCA (TLV QR code + UBL 2.1 XML with SHA-256 hashing and ECDSA P-256 signing), with automatic submission (Report / Clearance) on every sale invoice.
 - **JoFotara E-Invoicing (Jordan)**: Builds and submits the Jordanian National E-Invoicing JSON payload for Jordanian branches (UUID + QR + status).
+- **ETA E-Invoicing (Egypt)**: Builds and submits the Egyptian Tax Authority e-invoice JSON document for Egyptian branches (UUID + status).
 - **Common Payment Methods**: Cash, Mada, Credit Card, Bank Transfer, SADAD, Apple Pay, STC Pay, Check, Credit, and more.
 - **Core Accounting**: Journal entries, general ledger, trial balance, income statement, balance sheet, and VAT reports.
 - **Invoicing**: Sales & purchase invoices with automatic journal posting, partial payments, and credit collection for customers and suppliers.
@@ -75,14 +76,16 @@ Default accounts:
 
 Each invoice stores its submission status (`zatca_status`): `not_configured` / `submitting` / `submitted` / `cleared` / `failed`.
 
-## Dual Tax Systems (Saudi Arabia / Jordan)
+## Multi-Country Tax Systems (Saudi Arabia / Jordan / Syria / Egypt)
 
-The tax system is chosen **per branch**, so a company can operate Saudi and Jordanian branches side by side:
+The tax system is chosen **per branch**, so a company can operate branches across countries side by side:
 
-- **Saudi Arabia — VAT (ضريبة القيمة المضافة)**: default rate 15%, currency SAR (ر.س), authority ZATCA.
-- **Jordan — General Sales Tax (ضريبة المبيعات)**: default rate 16%, currency JOD (د.أ), authority Income and Sales Tax Department.
+- **Saudi Arabia — VAT (ضريبة القيمة المضافة)**: default rate 15%, currency SAR (ر.س), authority ZATCA, e-invoicing ZATCA.
+- **Jordan — General Sales Tax (ضريبة المبيعات)**: default rate 16%, currency JOD (د.أ), authority Income and Sales Tax Department, e-invoicing JoFotara.
+- **Syria — General Sales Tax (ضريبة المبيعات)**: default rate 20%, currency SYP (ل.س), authority General Commission for Taxes and Fees (no e-invoicing integration).
+- **Egypt — VAT (ضريبة القيمة المضافة)**: default rate 14%, currency EGP (ج.م), authority Egyptian Tax Authority (ETA), e-invoicing ETA.
 
-Each branch stores its tax system, effective tax rate (editable), currency and symbol, branch tax number, and (for Jordan) the JoFotara activity number and income source sequence. Invoices inherit the tax system and currency from their branch, and the VAT report shows the matching tax label, authority and currency.
+Each branch stores its tax system, effective tax rate (editable), currency and symbol, branch tax number, and the provider-specific fields (JoFotara activity number and income source sequence for Jordan; tax activity code for Egypt). Invoices inherit the tax system and currency from their branch, and the VAT report shows the matching tax label, authority and currency.
 
 ### JoFotara (Jordanian E-Invoicing) Setup
 
@@ -92,6 +95,15 @@ Each branch stores its tax system, effective tax rate (editable), currency and s
 4. From the sales invoices list you can view the JoFotara details (UUID + QR + status), download the JSON payload, and resubmit.
 
 Each invoice stores its submission status (`jo_status`): `not_configured` / `submitting` / `submitted` / `failed`, alongside the JoFotara UUID and QR code.
+
+### ETA (Egyptian E-Invoicing) Setup
+
+1. Obtain your credentials (Client ID / Client Secret) and the establishment tax number from the Egyptian Tax Authority portal — start in **Sandbox** mode.
+2. From **Settings → ETA**: enable submission, choose mode (Sandbox/Production), and enter the credentials, default tax number and tax activity code (identity and API URLs are pre-filled per mode).
+3. On every saved sale invoice for an Egyptian branch the system builds the ETA JSON document and submits it automatically (when credentials are configured).
+4. From the sales invoices list you can view the ETA details (UUID + status), download the JSON payload, and resubmit.
+
+Each invoice stores its submission status (`eg_status`): `not_configured` / `submitting` / `submitted` / `failed`, alongside the ETA UUID.
 
 ## Project Structure
 
@@ -105,6 +117,7 @@ Each invoice stores its submission status (`jo_status`): `not_configured` / `sub
 | `lib/invoices.js` | Invoicing, collection, auto posting + e-invoice generation |
 | `lib/tax.js` | Dual tax model (Saudi VAT / Jordan sales tax) per branch + currency |
 | `lib/jofotara/` | Jordanian National E-Invoicing (JoFotara) payload + submission |
+| `lib/egypt/` | Egyptian Tax Authority (ETA) e-invoice payload + submission |
 | `lib/parties.js` | Customers & suppliers |
 | `lib/inventory.js` | Warehouses, products, stock, counts, POS |
 | `lib/hr.js` | HR: departments, employees, attendance, leaves, payroll |
@@ -144,6 +157,7 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 - **Company Data**: company name, VAT rate, CR number, tax number, currency, fiscal year start/end dates, address, phone and email.
 - **ZATCA E-Invoicing**: enable automatic submission, choose Sandbox/Production mode, and store CSID credentials, private key (PEM), certificate and OTP.
 - **JoFotara**: enable automatic submission for Jordanian branches, choose Sandbox/Production mode, and store the Client ID, Client Secret, tax number and default activity number.
+- **ETA**: enable automatic submission for Egyptian branches, choose Sandbox/Production mode, and store the Client ID, Client Secret, tax number and default tax activity code (identity/API URLs are pre-filled per mode).
 - **Databases** (admin only): create a backup now, download / restore backups (from the list or by uploading a `.db` file), compress the database, and repair it. An automatic safety backup is created before every restore.
 - **WhatsApp**: enable WhatsApp sending, set the business number and optional WhatsApp Business Cloud API credentials (Phone Number ID + Access Token), and edit the message templates for sales invoices, purchase invoices, POS receipts and account statements.
 

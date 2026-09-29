@@ -54,6 +54,13 @@ const InvoicesView = {
       const b = this.branches.find(x => Number(x.id) === Number(id));
       return b ? b.name : '—';
     },
+    einvoiceStatusOf(i) {
+      const p = fmt.einvoiceProvider(i.tax_country);
+      if (p === 'jofotara') return i.jo_status;
+      if (p === 'egypt') return i.eg_status;
+      if (p === 'zatca') return i.zatca_status;
+      return null;
+    },
     async load() {
       try {
         const [invoices, parties, methods, products, warehouses, branches] = await Promise.all([
@@ -163,16 +170,23 @@ const InvoicesView = {
     remaining(inv) { return inv.total - inv.paid_amount; },
     async openDetail(inv) {
       this.detailLoading = true;
-      this.detail = { ...inv, zatca: null, jo: null };
+      this.detail = { ...inv, zatca: null, jo: null, eg: null };
       this.qrUrl = '';
       try {
-        if (inv.tax_country === 'JO') {
+        const provider = fmt.einvoiceProvider(inv.tax_country);
+        if (provider === 'jofotara') {
           const j = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/jofotara`);
           this.detail.jo = j;
           if (j.jo_qr && typeof QRCode !== 'undefined') {
             try { this.qrUrl = await QRCode.toDataURL(j.jo_qr, { width: 220, margin: 1 }); } catch (e) { /* QR اختياري */ }
           }
-        } else {
+        } else if (provider === 'egypt') {
+          const g = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/egypt`);
+          this.detail.eg = g;
+          if (g.eg_qr && typeof QRCode !== 'undefined') {
+            try { this.qrUrl = await QRCode.toDataURL(g.eg_qr, { width: 220, margin: 1 }); } catch (e) { /* QR اختياري */ }
+          }
+        } else if (provider === 'zatca') {
           const z = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/zatca`);
           this.detail.zatca = z;
           if (z.qr_data && typeof QRCode !== 'undefined') {
@@ -202,12 +216,25 @@ const InvoicesView = {
       a.click();
       URL.revokeObjectURL(url);
     },
+    downloadEgPayload() {
+      if (!this.detail || !this.detail.eg || !this.detail.eg.payload) return;
+      const blob = new Blob([JSON.stringify(this.detail.eg.payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${this.detail.invoice_no}-eta.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
     async resubmitZatca() {
       this.detailLoading = true;
       try {
         const inv = await this.api(`/api/companies/${this.company.id}/invoices/${this.detail.id}/resubmit`, { method: 'POST' });
-        if (this.detail && this.detail.tax_country === 'JO') {
+        const provider = fmt.einvoiceProvider(this.detail.tax_country);
+        if (provider === 'jofotara') {
           this.toast(inv.jo_status === 'failed' ? t('فشل الإرسال إلى JoFotara: {msg}', { msg: inv.jo_response || '' }) : t('تم إرسال الفاتورة إلى JoFotara'));
+        } else if (provider === 'egypt') {
+          this.toast(inv.eg_status === 'failed' ? t('فشل الإرسال إلى ETA: {msg}', { msg: inv.eg_response || '' }) : t('تم إرسال الفاتورة إلى ETA'));
         } else {
           this.toast(inv.zatca_status === 'failed' ? t('فشل الإرسال إلى هيئة الزكاة: {msg}', { msg: inv.zatca_response || '' }) : t('تم إرسال الفاتورة إلى هيئة الزكاة'));
         }
@@ -324,12 +351,13 @@ const InvoicesView = {
                 <td class="num">{{ fmt.moneyFor(i.paid_amount, i.currency) }}</td>
                 <td><span class="badge" :class="fmt.invStatus(i.status).c">{{ fmt.invStatus(i.status).t }}</span></td>
                 <td v-if="isSale">
-                  <span class="badge" :class="fmt.einvoiceStatus(i.tax_country, i.tax_country === 'JO' ? i.jo_status : i.zatca_status).c">{{ fmt.einvoiceStatus(i.tax_country, i.tax_country === 'JO' ? i.jo_status : i.zatca_status).t }}</span>
+                  <span v-if="fmt.hasEinvoice(i.tax_country)" class="badge" :class="fmt.einvoiceStatus(i.tax_country, einvoiceStatusOf(i)).c">{{ fmt.einvoiceStatus(i.tax_country, einvoiceStatusOf(i)).t }}</span>
+                  <span v-else class="muted">—</span>
                 </td>
                 <td>
                   <button v-if="i.status !== 'paid' && can(win, 'edit')" class="btn btn-sm btn-primary" @click="openPay(i)">{{ t('تحصيل / سداد') }}</button>
                   <button v-if="i.party && i.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(i)">💬 {{ t('واتساب') }}</button>
-                  <button v-if="isSale" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
+                  <button v-if="isSale && fmt.hasEinvoice(i.tax_country)" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
                 </td>
               </tr>
               <tr v-if="!invoices.length"><td :colspan="isSale ? 11 : 10" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
@@ -495,6 +523,31 @@ const InvoicesView = {
                 <button class="btn btn-sm btn-ghost" @click="downloadJoPayload" :disabled="!detail.jo.payload">{{ t('تحميل حمولة الفاتورة (JSON)') }}</button>
                 <button v-if="detail.party && detail.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(detail)">💬 {{ t('إرسال عبر واتساب') }}</button>
                 <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى JoFotara') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="detail.eg">
+          <div class="flex flex-wrap" style="gap:20px;align-items:flex-start;">
+            <div style="text-align:center;">
+              <img v-if="qrUrl" :src="qrUrl" alt="QR" style="border:1px solid #ddd;border-radius:8px;background:#fff;padding:6px;width:220px;height:220px;">
+              <div v-else class="muted">{{ t('لا يمكن عرض QR (يُستلم من ETA بعد الإرسال)') }}</div>
+            </div>
+            <div style="flex:1;min-width:260px;">
+              <table class="kv">
+                <tr><td>{{ t('رقم الفاتورة') }}</td><td class="monospace">{{ detail.eg.invoice_no }}</td></tr>
+                <tr><td>{{ t('نظام الضريبة') }}</td><td>{{ t('ضريبة القيمة المضافة') }}</td></tr>
+                <tr><td>{{ t('معرّف الفاتورة (UUID)') }}</td><td class="monospace" style="font-size:12px;">{{ detail.eg.eg_uuid || '—' }}</td></tr>
+                <tr><td>{{ t('حالة الإرسال') }}</td><td><span class="badge" :class="fmt.egyptStatus(detail.eg.eg_status).c">{{ fmt.egyptStatus(detail.eg.eg_status).t }}</span></td></tr>
+                <tr v-if="detail.eg.eg_submitted_at"><td>{{ t('تاريخ الإرسال') }}</td><td class="monospace">{{ detail.eg.eg_submitted_at }}</td></tr>
+                <tr v-if="detail.eg.eg_response && detail.eg.eg_status !== 'submitted'">
+                  <td>{{ t('ملاحظة النظام') }}</td><td class="muted" style="font-size:12px;">{{ detail.eg.eg_response }}</td>
+                </tr>
+              </table>
+              <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-ghost" @click="downloadEgPayload" :disabled="!detail.eg.payload">{{ t('تحميل حمولة الفاتورة (JSON)') }}</button>
+                <button v-if="detail.party && detail.party.phone" class="btn btn-sm btn-ghost" @click="sendWhatsApp(detail)">💬 {{ t('إرسال عبر واتساب') }}</button>
+                <button v-if="can('invoices-sale', 'edit')" class="btn btn-sm btn-primary" @click="resubmitZatca" :disabled="detailLoading">{{ detailLoading ? t('جارٍ الإرسال...') : t('إعادة الإرسال إلى ETA') }}</button>
               </div>
             </div>
           </div>
