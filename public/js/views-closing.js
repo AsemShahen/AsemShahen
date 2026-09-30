@@ -145,7 +145,16 @@ const SettingsView = {
     };
   },
   computed: {
-    isAdmin() { const u = getAuthUser(); return !!(u && u.role === 'admin'); }
+    isAdmin() { const u = getAuthUser(); return !!(u && u.role === 'admin'); },
+    taxSystems() {
+      return Object.keys(TAX_COUNTRIES_META).map(code => {
+        const m = TAX_COUNTRIES_META[code];
+        const country = { SA: 'السعودية', JO: 'الأردن', SY: 'سوريا', EG: 'مصر' }[code] || code;
+        const authority = { SA: 'هيئة الزكاة والضريبة والجمارك (ZATCA)', JO: 'دائرة ضريبة الدخل والمبيعات', SY: 'الهيئة العامة للضرائب والرسوم', EG: 'مصلحة الضرائب المصرية (ETA)' }[code] || '';
+        const einvoice = { zatca: 'الفاتورة الإلكترونية (ZATCA)', jofotara: 'الفاتورة الوطنية (JoFotara)', egypt: 'الفاتورة الإلكترونية المصرية (ETA)' }[m.einvoice] || '—';
+        return { code, country, label: m.label, rate: m.rate, currency: m.currency, symbol: m.symbol, authority, einvoice };
+      });
+    }
   },
   created() {
     this.form = {
@@ -422,6 +431,7 @@ const SettingsView = {
 
     <div class="flex flex-wrap mb-2" style="gap:8px;">
       <button class="btn btn-sm" :class="tab === 'company' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('company')">{{ t('بيانات الشركة') }}</button>
+      <button class="btn btn-sm" :class="tab === 'tax' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('tax')">{{ t('أنظمة الضريبة') }}</button>
       <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
       <button class="btn btn-sm" :class="tab === 'jofotara' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('jofotara')">{{ t('الفاتورة الوطنية الأردنية (JoFotara)') }}</button>
       <button class="btn btn-sm" :class="tab === 'egypt' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('egypt')">{{ t('الفاتورة الإلكترونية المصرية (ETA)') }}</button>
@@ -465,6 +475,57 @@ const SettingsView = {
         <div class="modal-actions">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الإعدادات') }}</button>
         </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'tax'">
+    <div class="panel" style="max-width:900px;border-top:4px solid var(--primary);">
+      <div class="panel-header"><h3>{{ t('أنظمة الضريبة المدعومة') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('النظام الضريبي والنسبة والعملة تُحدَّد لكل فرع من نافذة الفروع. الحقول التالية تعرض الأنظمة المدعومة وتحدّد النظام الافتراضي للشركة.') }}
+        </div>
+
+        <div class="form-grid" style="margin-bottom:16px;">
+          <label>{{ t('الدولة / نظام الضريبة الافتراضي') }}
+            <select v-model="form.tax_country">
+              <option v-for="ts in taxSystems" :key="ts.code" :value="ts.code">{{ t(ts.country) }} — {{ t(ts.label) }} ({{ ts.rate }}%)</option>
+            </select>
+          </label>
+          <label>{{ t('نسبة الضريبة الافتراضية (%)') }}
+            <input type="number" v-model.number="form.vat_rate" min="0" max="100">
+          </label>
+        </div>
+        <div class="modal-actions" style="justify-content:flex-start;margin-bottom:20px;">
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="save" :disabled="saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الإعدادات') }}</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ t('الدولة') }}</th>
+                <th>{{ t('نظام الضريبة') }}</th>
+                <th>{{ t('النسبة الافتراضية') }}</th>
+                <th>{{ t('العملة') }}</th>
+                <th>{{ t('الجهة الضريبية') }}</th>
+                <th>{{ t('الفاتورة الإلكترونية') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ts in taxSystems" :key="ts.code" :class="form.tax_country === ts.code ? 'row-active' : ''">
+                <td><strong>{{ t(ts.country) }}</strong> <span class="badge gray">{{ ts.code }}</span></td>
+                <td>{{ t(ts.label) }}</td>
+                <td class="num">{{ ts.rate }}%</td>
+                <td>{{ ts.currency }} <span class="muted">{{ ts.symbol }}</span></td>
+                <td class="muted" style="font-size:12px;">{{ t(ts.authority) }}</td>
+                <td><span class="badge" :class="ts.einvoice === '—' ? 'gray' : 'blue'">{{ t(ts.einvoice) }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:8px;">{{ t('لتغيير نظام ضريبة فرع معيّن أو نسبة الضريبة الفعلية أو عملته، افتح نافذة الفروع وعدّل الفرع.') }}</p>
       </div>
     </div>
     </template>
