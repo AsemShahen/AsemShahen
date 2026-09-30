@@ -11,6 +11,7 @@ const chartsLib = require('./lib/charts');
 const zatcaLib = require('./lib/zatca');
 const jofotaraLib = require('./lib/jofotara');
 const egyptLib = require('./lib/egypt');
+const syriaLib = require('./lib/syria');
 const taxLib = require('./lib/tax');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
@@ -894,6 +895,43 @@ app.get('/api/companies/:companyId/invoices/:invoiceId/jofotara', windowPerm('in
     payload,
     config: jofotaraLib.maskConfig(config)
   });
+});
+
+app.get('/api/companies/:companyId/syria-settings', windowPerm('settings', 'view'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const config = syriaLib.getConfig(db);
+  db.close();
+  res.json(syriaLib.maskConfig(config));
+});
+
+app.put('/api/companies/:companyId/syria-settings', windowPerm('settings', 'edit'), (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const b = req.body;
+  const existing = syriaLib.getConfig(db);
+  const config = {
+    active: b.active !== undefined ? !!b.active : existing.active,
+    taxpayerName: b.taxpayerName !== undefined ? b.taxpayerName : existing.taxpayerName,
+    taxNumber: b.taxNumber !== undefined ? b.taxNumber : existing.taxNumber,
+    financialNumber: b.financialNumber !== undefined ? b.financialNumber : existing.financialNumber,
+    commercialRegister: b.commercialRegister !== undefined ? b.commercialRegister : existing.commercialRegister,
+    activityCode: b.activityCode !== undefined ? b.activityCode : existing.activityCode,
+    activityDesc: b.activityDesc !== undefined ? b.activityDesc : existing.activityDesc,
+    financeOffice: b.financeOffice !== undefined ? b.financeOffice : existing.financeOffice,
+    chamber: b.chamber !== undefined ? b.chamber : existing.chamber,
+    salesTaxRate: b.salesTaxRate !== undefined ? b.salesTaxRate : existing.salesTaxRate,
+    incomeTaxRate: b.incomeTaxRate !== undefined ? b.incomeTaxRate : existing.incomeTaxRate,
+    address: b.address !== undefined ? b.address : existing.address,
+    phone: b.phone !== undefined ? b.phone : existing.phone,
+    notes: b.notes !== undefined ? b.notes : existing.notes
+  };
+  syriaLib.saveConfig(db, config);
+  const saved = syriaLib.getConfig(db);
+  db.close();
+  res.json(syriaLib.maskConfig(saved));
 });
 
 // ==================== ربط الواتساب ====================

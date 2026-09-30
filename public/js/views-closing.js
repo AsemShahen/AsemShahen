@@ -140,6 +140,7 @@ const SettingsView = {
       form: {}, saving: false, alert: null, zatca: null, zatcaForm: {}, savingZatca: false,
       jofotara: null, jofotaraForm: {}, savingJo: false,
       egypt: null, egyptForm: {}, savingEg: false,
+      syria: null, syriaForm: {}, savingSy: false,
       whatsapp: null, waForm: {}, savingWa: false,
       dbInfo: null, dbBusy: false, dbResult: null
     };
@@ -173,6 +174,7 @@ const SettingsView = {
     this.loadZatca();
     this.loadJofotara();
     this.loadEgypt();
+    this.loadSyria();
     this.loadWhatsapp();
   },
   methods: {
@@ -288,6 +290,21 @@ const SettingsView = {
         await this.loadEgypt();
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.savingEg = false; }
+    },
+    async loadSyria() {
+      try {
+        this.syria = await api(`/companies/${this.companyId}/syria-settings`);
+        this.syriaForm = { ...this.syria, active: !!this.syria.active };
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async saveSyria() {
+      this.savingSy = true;
+      try {
+        await api(`/companies/${this.companyId}/syria-settings`, { method: 'PUT', body: this.syriaForm });
+        await this.loadSyria();
+        this.toast('تم حفظ إعدادات الضريبة السورية', 'success');
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.savingSy = false; }
     },
     async loadWhatsapp() {
       try {
@@ -435,6 +452,7 @@ const SettingsView = {
       <button class="btn btn-sm" :class="tab === 'zatca' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('zatca')">{{ t('الربط مع هيئة الزكاة (ZATCA)') }}</button>
       <button class="btn btn-sm" :class="tab === 'jofotara' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('jofotara')">{{ t('الفاتورة الوطنية الأردنية (JoFotara)') }}</button>
       <button class="btn btn-sm" :class="tab === 'egypt' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('egypt')">{{ t('الفاتورة الإلكترونية المصرية (ETA)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'syria' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('syria')">{{ t('الضريبة السورية (ضريبة المبيعات)') }}</button>
       <button class="btn btn-sm" :class="tab === 'whatsapp' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('whatsapp')">{{ t('الواتساب') }}</button>
       <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
     </div>
@@ -691,6 +709,76 @@ const SettingsView = {
 
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveEgypt" :disabled="savingEg">{{ savingEg ? t('جارٍ الحفظ...') : t('حفظ إعدادات ETA') }}</button>
+        </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'syria'">
+    <div class="panel" style="max-width:800px;border-top:4px solid var(--primary);">
+      <div class="panel-header"><h3>{{ t('الضريبة السورية (ضريبة المبيعات)') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('الملف الضريبي السوري للمنشأة (ضريبة المبيعات والدخل). تُستخدم هذه البيانات في الإعدادات والطباعة. لا توجد منظومة فاتورة إلكترونية سورية.') }}
+          <ul style="margin-top:8px;padding-right:18px;">
+            <li>{{ t('يُحدَّد نظام الضريبة لكل فرع (سوريا — ضريبة المبيعات 20%) والعملة (ل.س) من نافذة الفروع.') }}</li>
+            <li>{{ t('النسب هنا افتراضية للمنشأة ويمكن تعديلها.') }}</li>
+          </ul>
+        </div>
+
+        <div v-if="syria" class="flex flex-wrap" style="gap:8px;margin-bottom:14px;">
+          <span class="badge" :class="syria.active ? 'green' : 'gray'">{{ syria.active ? t('بيانات الضريبة السورية مفعّلة') : t('غير مفعّلة') }}</span>
+          <span class="badge gray">{{ t('ضريبة المبيعات') }}: {{ syriaForm.salesTaxRate }}%</span>
+          <span class="badge gray">{{ t('ضريبة الدخل') }}: {{ syriaForm.incomeTaxRate }}%</span>
+        </div>
+
+        <div class="form-grid">
+          <label class="span2 flex" style="flex-direction:row;gap:8px;">
+            <input type="checkbox" v-model="syriaForm.active" style="width:auto;"> {{ t('تفعيل عرض بيانات الضريبة السورية') }}
+          </label>
+          <label>{{ t('نسبة ضريبة المبيعات (%)') }}
+            <input type="number" step="0.01" v-model.number="syriaForm.salesTaxRate">
+          </label>
+          <label>{{ t('نسبة ضريبة الدخل (%)') }}
+            <input type="number" step="0.01" v-model.number="syriaForm.incomeTaxRate">
+          </label>
+          <label>{{ t('اسم المكلف الضريبي') }}
+            <input v-model.trim="syriaForm.taxpayerName">
+          </label>
+          <label>{{ t('الرقم الضريبي') }}
+            <input v-model.trim="syriaForm.taxNumber" dir="ltr">
+          </label>
+          <label>{{ t('الرقم المالي / رقم المكلف') }}
+            <input v-model.trim="syriaForm.financialNumber" dir="ltr">
+          </label>
+          <label>{{ t('رقم السجل التجاري') }}
+            <input v-model.trim="syriaForm.commercialRegister" dir="ltr">
+          </label>
+          <label>{{ t('رمز النشاط الضريبي') }}
+            <input v-model.trim="syriaForm.activityCode" dir="ltr">
+          </label>
+          <label>{{ t('وصف النشاط') }}
+            <input v-model.trim="syriaForm.activityDesc">
+          </label>
+          <label>{{ t('مديرية / دائرة المالية') }}
+            <input v-model.trim="syriaForm.financeOffice">
+          </label>
+          <label>{{ t('غرفة التجارة والصناعة') }}
+            <input v-model.trim="syriaForm.chamber">
+          </label>
+          <label>{{ t('الهاتف') }}
+            <input v-model.trim="syriaForm.phone" dir="ltr">
+          </label>
+          <label class="span2">{{ t('العنوان') }}
+            <input v-model.trim="syriaForm.address">
+          </label>
+          <label class="span2">{{ t('ملاحظات') }}
+            <textarea v-model.trim="syriaForm.notes" rows="2"></textarea>
+          </label>
+        </div>
+
+        <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
+          <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveSyria" :disabled="savingSy">{{ savingSy ? t('جارٍ الحفظ...') : t('حفظ إعدادات الضريبة السورية') }}</button>
         </div>
       </div>
     </div>
