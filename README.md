@@ -105,6 +105,16 @@ Each invoice stores its submission status (`jo_status`): `not_configured` / `sub
 
 Each invoice stores its submission status (`eg_status`): `not_configured` / `submitting` / `submitted` / `failed`, alongside the ETA UUID.
 
+## Multi-Currency
+
+The company has a single **base currency** that is the books and reporting currency, plus an editable exchange-rate table:
+
+- **Base currency**: set from **Settings → Currencies & Exchange Rates** (defaults to the company currency, e.g. SAR), with a rate of 1 always.
+- **Exchange-rate table**: 12 seeded currencies with editable rates. `rate` = number of base-currency units per **one** unit of the foreign currency, so `base amount = document amount × rate`. Rates can be edited manually or fetched automatically from the Open Exchange Rates API.
+- **Invoices**: each invoice is created in a document currency (defaults to the branch currency) with an exchange rate; the equivalent base amounts are stored (`base_sub_total`, `base_vat`, `base_total`, `base_paid_amount`) and the list shows the base equivalent.
+- **Journal**: manual entries and invoice/payment entries are posted in the base currency, while the document currency and exchange rate are preserved on the entry.
+- **Reports & dashboard**: all totals, trial balance, income statement, balance sheet and VAT report are shown in the base currency.
+
 ## Project Structure
 
 | File | Description |
@@ -116,6 +126,7 @@ Each invoice stores its submission status (`eg_status`): `not_configured` / `sub
 | `lib/accounting.js` | Accounting operations + fiscal year closing |
 | `lib/invoices.js` | Invoicing, collection, auto posting + e-invoice generation |
 | `lib/tax.js` | Dual tax model (Saudi VAT / Jordan sales tax) per branch + currency |
+| `lib/currency.js` | Base currency + editable exchange-rate table, auto-fetch rates |
 | `lib/jofotara/` | Jordanian National E-Invoicing (JoFotara) payload + submission |
 | `lib/egypt/` | Egyptian Tax Authority (ETA) e-invoice payload + submission |
 | `lib/parties.js` | Customers & suppliers |
@@ -158,6 +169,8 @@ All screens support Arabic/English: Dashboard, Chart of Accounts, Journal, Ledge
 - **ZATCA E-Invoicing**: enable automatic submission, choose Sandbox/Production mode, and store CSID credentials, private key (PEM), certificate and OTP.
 - **JoFotara**: enable automatic submission for Jordanian branches, choose Sandbox/Production mode, and store the Client ID, Client Secret, tax number and default activity number.
 - **ETA**: enable automatic submission for Egyptian branches, choose Sandbox/Production mode, and store the Client ID, Client Secret, tax number and default tax activity code (identity/API URLs are pre-filled per mode).
+- **Syrian Tax**: activate the Syrian tax profile and store the taxpayer name, tax number, financial number, commercial register, activity code/description, finance office, chamber, sales tax rate (20%), income tax rate, address, phone and notes.
+- **Currencies & Exchange Rates**: set the base currency, add/edit/delete currencies, edit exchange rates, and fetch rates automatically.
 - **Databases** (admin only): create a backup now, download / restore backups (from the list or by uploading a `.db` file), compress the database, and repair it. An automatic safety backup is created before every restore.
 - **WhatsApp**: enable WhatsApp sending, set the business number and optional WhatsApp Business Cloud API credentials (Phone Number ID + Access Token), and edit the message templates for sales invoices, purchase invoices, POS receipts and account statements.
 

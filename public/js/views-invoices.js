@@ -7,7 +7,7 @@ const InvoicesView = {
   props: { kind: { type: String, required: true } },
   data() {
     return {
-      invoices: [], parties: [], methods: [], products: [], warehouses: [], branches: [],
+      invoices: [], parties: [], methods: [], products: [], warehouses: [], branches: [], currencies: [],
       loading: true, alert: null, filter: '', branchFilter: '', barcodeInput: '',
       showModal: false, saving: false, payModal: null, paying: false,
       detail: null, qrUrl: '', detailLoading: false,
@@ -24,7 +24,9 @@ const InvoicesView = {
       if (w && !this.warehouses.some(x => Number(x.id) === Number(this.form.warehouse_id) && Number(x.branch_id) === Number(id))) {
         this.form.warehouse_id = w.id;
       }
-    }
+      if (!this.form.currency) this.applyCurrency(b.currency || this.formTaxMeta.currency);
+    },
+    'form.currency'(code) { this.applyCurrency(code); }
   },
   computed: {
     isSale() { return this.kind === 'sale'; },
@@ -33,7 +35,9 @@ const InvoicesView = {
     win() { return this.isSale ? 'invoices-sale' : 'invoices-purchase'; },
     formBranch() { return this.branches.find(b => Number(b.id) === Number(this.form.branch_id)) || null; },
     formTaxMeta() { return taxCountryMeta(this.formBranch ? this.formBranch.tax_country : 'SA'); },
-    formCurrency() { return this.formBranch ? (this.formBranch.currency || this.formTaxMeta.currency) : 'SAR'; },
+    formCurrency() { return this.form.currency || (this.formBranch ? (this.formBranch.currency || this.formTaxMeta.currency) : this.baseCurrency); },
+    formRate() { return Number(this.form.exchange_rate) || 1; },
+    baseTotal() { return this.total() * this.formRate; },
     branchWarehouses() {
       if (!this.form.branch_id) return this.warehouses;
       return this.warehouses.filter(w => Number(w.branch_id) === Number(this.form.branch_id));
@@ -63,13 +67,14 @@ const InvoicesView = {
     },
     async load() {
       try {
-        const [invoices, parties, methods, products, warehouses, branches] = await Promise.all([
+        const [invoices, parties, methods, products, warehouses, branches, curr] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/invoices?kind=${this.kind}`),
           this.api(`/api/companies/${this.company.id}/parties?type=${this.partyType}`),
           this.api(`/api/companies/${this.company.id}/payment-methods`),
           this.api(`/api/companies/${this.company.id}/products`),
           this.api(`/api/companies/${this.company.id}/warehouses`),
-          this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
+          this.api(`/api/companies/${this.company.id}/branches`).catch(() => []),
+          this.api(`/api/companies/${this.company.id}/currencies`).catch(() => null)
         ]);
         this.invoices = invoices;
         this.parties = parties;
@@ -77,8 +82,18 @@ const InvoicesView = {
         this.products = products;
         this.warehouses = warehouses;
         this.branches = branches || [];
+        this.currencies = (curr && curr.currencies) ? curr.currencies.filter(c => c.is_active) : [];
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
+    },
+    rateFor(code) {
+      const c = String(code || '').toUpperCase();
+      if (c === this.baseCurrency) return 1;
+      const row = this.currencies.find(x => x.code === c);
+      return row ? Number(row.rate) || 1 : 1;
+    },
+    applyCurrency(code) {
+      this.form.exchange_rate = this.rateFor(code);
     },
     async sendWhatsApp(i) {
       await this.askWhatsApp({ type: 'invoice', kind: this.kind, invoiceId: i.id });
@@ -92,6 +107,8 @@ const InvoicesView = {
         party_id: '', date: new Date().toISOString().slice(0, 10), vat_rate: defRate,
         payment_method: 'cash', paid_amount: null, discount: 0, notes: '',
         branch_id: def ? def.id : '',
+        currency: def ? (def.currency || '') : this.baseCurrency,
+        exchange_rate: def && def.currency ? this.rateFor(def.currency) : 1,
         warehouse_id: this.warehouses.length ? this.warehouses[0].id : '',
         lines: [this.emptyLine()]
       };
@@ -141,6 +158,8 @@ const InvoicesView = {
           paid_amount: this.form.paid_amount !== null ? Number(this.form.paid_amount) : undefined,
           notes: this.form.notes,
           branch_id: this.form.branch_id ? Number(this.form.branch_id) : undefined,
+          currency: this.formCurrency,
+          exchange_rate: this.formRate,
           lines: this.form.lines.map(l => ({ product_id: l.product_id ? Number(l.product_id) : undefined, warehouse_id: this.form.warehouse_id ? Number(this.form.warehouse_id) : undefined, description: l.description, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, discount: Number(l.discount) || 0 }))
         };
         await this.api(`/api/companies/${this.company.id}/invoices`, { method: 'POST', body });
@@ -335,7 +354,7 @@ const InvoicesView = {
             <thead>
               <tr>
                 <th>{{ t('رقم الفاتورة') }}</th><th>{{ isSale ? t('العميل') : t('المورد') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('التاريخ') }}</th>
-                <th>{{ t('الإجمالي') }}</th><th>{{ t('الضريبة') }}</th><th>{{ t('طريقة الدفع') }}</th><th>{{ t('المدفوع') }}</th><th>{{ t('الحالة') }}</th>
+                <th>{{ t('الإجمالي') }}</th><th>{{ t('المعادل') }} ({{ baseSymbol }})</th><th>{{ t('الضريبة') }}</th><th>{{ t('طريقة الدفع') }}</th><th>{{ t('المدفوع') }}</th><th>{{ t('الحالة') }}</th>
                 <th v-if="isSale">{{ t('الفاتورة الإلكترونية') }}</th><th></th>
               </tr>
             </thead>
@@ -346,6 +365,7 @@ const InvoicesView = {
                 <td>{{ branchName(i.branch_id) }}</td>
                 <td>{{ fmt.date(i.date) }}</td>
                 <td class="num">{{ fmt.moneyFor(i.total, i.currency) }}</td>
+                <td class="num">{{ fmt.money(i.base_total, baseSymbol) }}</td>
                 <td class="num">{{ fmt.moneyFor(i.vat, i.currency) }}</td>
                 <td>{{ fmt.payMethod(i.payment_method, methods) }}</td>
                 <td class="num">{{ fmt.moneyFor(i.paid_amount, i.currency) }}</td>
@@ -360,7 +380,7 @@ const InvoicesView = {
                   <button v-if="isSale && fmt.hasEinvoice(i.tax_country)" class="btn btn-sm btn-ghost" @click="openDetail(i)">{{ t('تفاصيل') }}</button>
                 </td>
               </tr>
-              <tr v-if="!invoices.length"><td :colspan="isSale ? 11 : 10" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
+              <tr v-if="!invoices.length"><td :colspan="isSale ? 12 : 11" class="muted">{{ t('لا توجد فواتير بعد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -386,7 +406,16 @@ const InvoicesView = {
           </label>
           <label>{{ t('نسبة الضريبة (%)') }} <input type="number" v-model.number="form.vat_rate"></label>
           <label class="span2" v-if="formBranch">
-            <span class="muted" style="font-size:12px;">{{ t('نظام الضريبة') }}: {{ t(formTaxMeta.label) }} ({{ form.vat_rate || 0 }}%) — {{ t('العملة') }}: {{ formCurrency }} {{ fmt.currencySymbol(formCurrency) }}</span>
+            <span class="muted" style="font-size:12px;">{{ t('نظام الضريبة') }}: {{ t(formTaxMeta.label) }} ({{ form.vat_rate || 0 }}%)</span>
+          </label>
+          <label>{{ t('العملة') }}
+            <select v-model="form.currency">
+              <option v-if="!currencies.some(c => c.code === baseCurrency)" :value="baseCurrency">{{ baseCurrency }} - {{ t('أساسية') }}</option>
+              <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.code }} - {{ c.name }}</option>
+            </select>
+          </label>
+          <label>{{ t('سعر الصرف مقابل {x}', { x: baseCurrency }) }}
+            <input type="number" step="0.000001" v-model.number="form.exchange_rate" :disabled="formCurrency === baseCurrency">
           </label>
           <label>{{ t('طريقة الدفع') }}
             <select v-model="form.payment_method">
@@ -439,6 +468,7 @@ const InvoicesView = {
             <div>{{ t('الإجمالي قبل الضريبة:') }} <strong class="monospace">{{ fmt.moneyFor(taxable(), formCurrency) }}</strong></div>
             <div>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }} <strong class="monospace">{{ fmt.moneyFor(vatAmount(), formCurrency) }}</strong></div>
             <div style="font-size:16px;">{{ t('الإجمالي:') }} <strong class="monospace" style="color:var(--primary);">{{ fmt.moneyFor(total(), formCurrency) }}</strong></div>
+            <div v-if="formCurrency !== baseCurrency" class="muted" style="font-size:12px;">{{ t('المعادل بالعملة الأساسية:') }} <strong class="monospace">{{ fmt.money(baseTotal(), baseSymbol) }}</strong></div>
           </div>
         </div>
 

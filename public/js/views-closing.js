@@ -141,6 +141,7 @@ const SettingsView = {
       jofotara: null, jofotaraForm: {}, savingJo: false,
       egypt: null, egyptForm: {}, savingEg: false,
       syria: null, syriaForm: {}, savingSy: false,
+      currencies: [], currenciesBase: 'SAR', currencyForm: { code: '', name: '', symbol: '', rate: 1 }, savingCur: false, fetchingRates: false,
       whatsapp: null, waForm: {}, savingWa: false,
       dbInfo: null, dbBusy: false, dbResult: null
     };
@@ -175,6 +176,7 @@ const SettingsView = {
     this.loadJofotara();
     this.loadEgypt();
     this.loadSyria();
+    this.loadCurrencies();
     this.loadWhatsapp();
   },
   methods: {
@@ -305,6 +307,59 @@ const SettingsView = {
         this.toast('تم حفظ إعدادات الضريبة السورية', 'success');
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.savingSy = false; }
+    },
+    async loadCurrencies() {
+      try {
+        const r = await api(`/companies/${this.companyId}/currencies`);
+        this.currencies = r.currencies || [];
+        this.currenciesBase = r.base || 'SAR';
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async addCurrency() {
+      const f = this.currencyForm;
+      if (!f.code) { this.toast('أدخل رمز العملة (مثال: USD)', 'error'); return; }
+      this.savingCur = true;
+      try {
+        await api(`/companies/${this.companyId}/currencies`, { method: 'POST', body: f });
+        this.toast('تمت إضافة العملة');
+        this.currencyForm = { code: '', name: '', symbol: '', rate: 1 };
+        await this.loadCurrencies();
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.savingCur = false; }
+    },
+    async saveCurrency(c) {
+      try {
+        await api(`/companies/${this.companyId}/currencies`, { method: 'POST', body: { code: c.code, name: c.name, symbol: c.symbol, rate: c.rate, is_active: c.is_active } });
+        this.toast('تم تحديث سعر الصرف');
+        await this.loadCurrencies();
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async setBaseCurrency(code) {
+      try {
+        const r = await api(`/companies/${this.companyId}/currencies/base`, { method: 'PUT', body: { code } });
+        this.currencies = r.currencies || [];
+        this.currenciesBase = r.base;
+        this.toast('تم تعيين العملة الأساسية');
+      } catch (e) { this.toast(e.message, 'error'); }
+    },
+    async fetchRates() {
+      this.fetchingRates = true;
+      try {
+        const r = await api(`/companies/${this.companyId}/currencies/fetch-rates`, { method: 'POST' });
+        this.currencies = r.currencies || [];
+        this.currenciesBase = r.base;
+        this.toast(r.ok ? `تم جلب أسعار الصرف (${(r.updated || []).length} عملة)` : `تعذّر جلب الأسعار: ${r.error || ''}`, r.ok ? 'success' : 'error');
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.fetchingRates = false; }
+    },
+    async deleteCurrency(code) {
+      if (code === this.currenciesBase) { this.toast('لا يمكن حذف العملة الأساسية', 'error'); return; }
+      if (!confirm(t('حذف العملة {code}؟', { code }))) return;
+      try {
+        await api(`/companies/${this.companyId}/currencies/${code}`, { method: 'DELETE' });
+        this.toast('تم حذف العملة');
+        await this.loadCurrencies();
+      } catch (e) { this.toast(e.message, 'error'); }
     },
     async loadWhatsapp() {
       try {
@@ -453,6 +508,7 @@ const SettingsView = {
       <button class="btn btn-sm" :class="tab === 'jofotara' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('jofotara')">{{ t('الفاتورة الوطنية الأردنية (JoFotara)') }}</button>
       <button class="btn btn-sm" :class="tab === 'egypt' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('egypt')">{{ t('الفاتورة الإلكترونية المصرية (ETA)') }}</button>
       <button class="btn btn-sm" :class="tab === 'syria' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('syria')">{{ t('الضريبة السورية (ضريبة المبيعات)') }}</button>
+      <button class="btn btn-sm" :class="tab === 'currencies' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('currencies')">{{ t('العملات وأسعار الصرف') }}</button>
       <button class="btn btn-sm" :class="tab === 'whatsapp' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('whatsapp')">{{ t('الواتساب') }}</button>
       <button class="btn btn-sm" :class="tab === 'db' ? 'btn-primary' : 'btn-ghost'" @click="switchTab('db')">{{ t('قواعد البيانات') }}</button>
     </div>
@@ -779,6 +835,69 @@ const SettingsView = {
 
         <div class="flex mt-2" style="gap:8px;flex-wrap:wrap;">
           <button v-if="can('settings', 'edit')" class="btn btn-primary" @click="saveSyria" :disabled="savingSy">{{ savingSy ? t('جارٍ الحفظ...') : t('حفظ إعدادات الضريبة السورية') }}</button>
+        </div>
+      </div>
+    </div>
+    </template>
+
+    <template v-if="tab === 'currencies'">
+    <div class="panel" style="max-width:900px;border-top:4px solid var(--primary);">
+      <div class="panel-header"><h3>{{ t('العملات وأسعار الصرف') }}</h3></div>
+      <div class="panel-body">
+        <div class="alert info">
+          {{ t('العملة الأساسية هي عملة الدفاتر والتقارير. سعر الصرف = عدد وحدات العملة الأساسية مقابل وحدة واحدة من العملة الأجنبية. تُرحَّل الفواتير والقيود بالعملة الأساسية مع حفظ عملة المستند وسعر الصرف.') }}
+          <div style="margin-top:8px;">
+            {{ t('العملة الأساسية الحالية:') }} <strong>{{ currenciesBase }} {{ fmt.currencySymbol(currenciesBase) }}</strong>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap" style="gap:8px;margin-bottom:12px;">
+          <button class="btn btn-sm btn-primary" @click="fetchRates" :disabled="fetchingRates">{{ fetchingRates ? t('جارٍ الجلب...') : t('جلب أسعار الصرف تلقائياً') }}</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ t('الرمز') }}</th><th>{{ t('الاسم') }}</th><th>{{ t('الرمز المختصر') }}</th>
+                <th>{{ t('سعر الصرف') }}</th><th>{{ t('المصدر') }}</th><th>{{ t('أساسية') }}</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in currencies" :key="c.code">
+                <td class="monospace"><strong>{{ c.code }}</strong></td>
+                <td><input v-model.trim="c.name" style="min-width:140px;"></td>
+                <td><input v-model.trim="c.symbol" style="width:70px;"></td>
+                <td>
+                  <input type="number" step="0.000001" v-model.number="c.rate" :disabled="c.code === currenciesBase" style="width:120px;">
+                </td>
+                <td><span class="badge" :class="c.source === 'auto' ? 'green' : 'gray'">{{ c.source === 'auto' ? t('تلقائي') : t('يدوي') }}</span></td>
+                <td>
+                  <span v-if="c.code === currenciesBase" class="badge green">{{ t('أساسية') }}</span>
+                  <button v-else class="btn btn-sm btn-ghost" @click="setBaseCurrency(c.code)">{{ t('تعيين كأساسية') }}</button>
+                </td>
+                <td>
+                  <button v-if="c.code !== currenciesBase" class="btn btn-sm btn-primary" @click="saveCurrency(c)">{{ t('حفظ') }}</button>
+                  <button v-if="c.code !== currenciesBase" class="btn btn-sm btn-danger" @click="deleteCurrency(c.code)">✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel mt-2" style="box-shadow:none;border:1px dashed var(--border);">
+          <div class="panel-body">
+            <h4 style="margin-top:0;">{{ t('إضافة عملة') }}</h4>
+            <div class="form-grid">
+              <label>{{ t('الرمز') }} <input v-model.trim="currencyForm.code" dir="ltr" placeholder="USD"></label>
+              <label>{{ t('الاسم') }} <input v-model.trim="currencyForm.name" :placeholder="t('دولار أمريكي')"></label>
+              <label>{{ t('الرمز المختصر') }} <input v-model.trim="currencyForm.symbol" dir="ltr" placeholder="$"></label>
+              <label>{{ t('سعر الصرف مقابل العملة الأساسية') }} <input type="number" step="0.000001" v-model.number="currencyForm.rate"></label>
+            </div>
+            <div class="flex mt-2">
+              <button class="btn btn-primary" @click="addCurrency" :disabled="savingCur">{{ savingCur ? t('جارٍ الحفظ...') : t('إضافة العملة') }}</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ const zatcaLib = require('./lib/zatca');
 const jofotaraLib = require('./lib/jofotara');
 const egyptLib = require('./lib/egypt');
 const syriaLib = require('./lib/syria');
+const currencyLib = require('./lib/currency');
 const taxLib = require('./lib/tax');
 const usersLib = require('./lib/users');
 const hospitalLib = require('./lib/hospital');
@@ -419,12 +420,13 @@ app.get('/api/companies/:companyId/info', (req, res) => {
     (SELECT COUNT(*) FROM accounts WHERE is_header=0) AS accounts`).get();
   const vat = accounting.vatReport(db, {});
   const totals = db.prepare(`SELECT
-    COALESCE(SUM(CASE WHEN kind='sale' THEN total END),0) AS sales,
-    COALESCE(SUM(CASE WHEN kind='purchase' THEN total END),0) AS purchases,
-    COALESCE(SUM(CASE WHEN kind='sale' AND status!='paid' THEN total-paid_amount END),0) AS receivables,
-    COALESCE(SUM(CASE WHEN kind='purchase' AND status!='paid' THEN total-paid_amount END),0) AS payables
+    COALESCE(SUM(CASE WHEN kind='sale' THEN base_total END),0) AS sales,
+    COALESCE(SUM(CASE WHEN kind='purchase' THEN base_total END),0) AS purchases,
+    COALESCE(SUM(CASE WHEN kind='sale' AND status!='paid' THEN base_total-base_paid_amount END),0) AS receivables,
+    COALESCE(SUM(CASE WHEN kind='purchase' AND status!='paid' THEN base_total-base_paid_amount END),0) AS payables
     FROM invoices`).get();
-  res.json({ settings, fiscal_years: years, active_fiscal_year: activeFy, payment_methods: paymentMethods, counts, vat, totals, business_type_label: chartsLib.typeLabel(company.business_type) });
+  const baseCurrency = settings.base_currency || currencyLib.getBaseCurrency(db);
+  res.json({ settings, fiscal_years: years, active_fiscal_year: activeFy, payment_methods: paymentMethods, counts, vat, totals, base_currency: baseCurrency, base_currency_symbol: currencyLib.symbolFor(baseCurrency), business_type_label: chartsLib.typeLabel(company.business_type) });
   db.close();
 });
 
@@ -604,8 +606,10 @@ app.get('/api/companies/:companyId/vat-report', windowPerm('vat', 'view'), (req,
   const reportTax = bId ? taxLib.branchTax(db, bId) : null;
   const reportCountry = reportTax ? reportTax.country : taxLib.normalizeCountry(company.tax_country);
   const reportMeta = taxLib.countryMeta(reportCountry);
-  const reportCurrency = reportTax ? reportTax.currency : (company.currency || reportMeta.currency);
-  const reportSymbol = reportTax ? reportTax.currencySymbol : (reportMeta.currencySymbol);
+  // مبالغ التقرير مسجّلة بالعملة الأساسية للشركة
+  const baseSetting = db.prepare(`SELECT value FROM settings WHERE key='base_currency'`).get();
+  const reportCurrency = (baseSetting && baseSetting.value) || company.currency || reportMeta.currency;
+  const reportSymbol = currencyLib.symbolFor(reportCurrency, reportMeta.currencySymbol);
   const details = db.prepare(`
     SELECT je.date, je.entry_no, je.description, jl.vat_amount, jl.vat_type, a.code, a.name AS account_name
     FROM journal_lines jl JOIN journal_entries je ON je.id = jl.entry_id JOIN accounts a ON a.id = jl.account_id
@@ -932,6 +936,63 @@ app.put('/api/companies/:companyId/syria-settings', windowPerm('settings', 'edit
   const saved = syriaLib.getConfig(db);
   db.close();
   res.json(syriaLib.maskConfig(saved));
+});
+
+// ==================== العملات وأسعار الصرف ====================
+app.get('/api/companies/:companyId/currencies', (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  if (!usersLib.userHasCompany(req.user, company.id)) return res.status(403).json({ error: 'ليست لديك صلاحية لهذه الشركة' });
+  const db = accounting.getDb(company.id);
+  const base = currencyLib.getBaseCurrency(db);
+  const currencies = currencyLib.listCurrencies(db);
+  db.close();
+  res.json({ base, base_symbol: currencyLib.symbolFor(base), currencies });
+});
+
+app.post('/api/companies/:companyId/currencies', companyAdminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  try {
+    const c = currencyLib.upsertCurrency(db, req.body || {});
+    db.close();
+    res.json(c);
+  } catch (e) { db.close(); res.status(400).json({ error: e.message }); }
+});
+
+app.put('/api/companies/:companyId/currencies/base', companyAdminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  try {
+    const base = currencyLib.setBaseCurrency(db, (req.body || {}).code);
+    const currencies = currencyLib.listCurrencies(db);
+    db.close();
+    res.json({ base, base_symbol: currencyLib.symbolFor(base), currencies });
+  } catch (e) { db.close(); res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/companies/:companyId/currencies/fetch-rates', companyAdminOnly, async (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  const base = currencyLib.getBaseCurrency(db);
+  const result = await currencyLib.fetchRates(db);
+  const currencies = currencyLib.listCurrencies(db);
+  db.close();
+  res.json({ ...result, base, base_symbol: currencyLib.symbolFor(base), currencies });
+});
+
+app.delete('/api/companies/:companyId/currencies/:code', companyAdminOnly, (req, res) => {
+  const company = getCompany(Number(req.params.companyId));
+  if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  const db = accounting.getDb(company.id);
+  try {
+    currencyLib.deleteCurrency(db, req.params.code);
+    db.close();
+    res.json({ ok: true });
+  } catch (e) { db.close(); res.status(400).json({ error: e.message }); }
 });
 
 // ==================== ربط الواتساب ====================
@@ -2789,17 +2850,17 @@ app.get('/api/companies/:companyId/dashboard', windowPerm('dashboard', 'view'), 
   const bargs = bId ? [bId] : [];
   const stmt = accounting.incomeStatement(db, { fiscal_year_id: fy.id, branch_id: bId });
   const bs = accounting.balanceSheet(db, { fiscal_year_id: fy.id, branch_id: bId });
-  const sales = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
-  const purchases = db.prepare(`SELECT COALESCE(SUM(total),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
-  const receivables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
-  const payables = db.prepare(`SELECT COALESCE(SUM(total-paid_amount),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
+  const sales = db.prepare(`SELECT COALESCE(SUM(base_total),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
+  const purchases = db.prepare(`SELECT COALESCE(SUM(base_total),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=?${bsuffix}`).get(fy.id, ...bargs).t;
+  const receivables = db.prepare(`SELECT COALESCE(SUM(base_total-base_paid_amount),0) AS t FROM invoices WHERE kind='sale' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
+  const payables = db.prepare(`SELECT COALESCE(SUM(base_total-base_paid_amount),0) AS t FROM invoices WHERE kind='purchase' AND fiscal_year_id=? AND status!='paid'${bsuffix}`).get(fy.id, ...bargs).t;
   const recentEntries = accounting.listJournalEntries(db, { fiscal_year_id: fy.id, branch_id: bId, limit: 8 });
   const recentInvoices = invoicesLib.listInvoices(db, { fiscal_year_id: fy.id, branch_id: bId, limit: 8 });
   const cash = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1101'`).get(), { branch_id: bId }).balance;
   const bank = accounting.accountBalance(db, db.prepare(`SELECT * FROM accounts WHERE code='1111'`).get(), { branch_id: bId }).balance;
 
   const salesByMonth = db.prepare(`
-    SELECT strftime('%m', date) AS m, COALESCE(SUM(total),0) AS t FROM invoices
+    SELECT strftime('%m', date) AS m, COALESCE(SUM(base_total),0) AS t FROM invoices
     WHERE kind='sale' AND fiscal_year_id=?${bsuffix} GROUP BY m ORDER BY m
   `).all(fy.id, ...bargs);
 

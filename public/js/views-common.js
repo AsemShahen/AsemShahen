@@ -11,17 +11,30 @@ const TAX_COUNTRIES_META = {
 function taxCountryMeta(code) {
   return TAX_COUNTRIES_META[String(code || '').toUpperCase()] || TAX_COUNTRIES_META.SA;
 }
+// رموز العملات المدعومة (بما فيها العملات الأساسية للشركات)
+const CURRENCY_SYMBOLS = {
+  SAR: 'ر.س', JOD: 'د.أ', SYP: 'ل.س', EGP: 'ج.م',
+  AED: 'د.إ', KWD: 'د.ك', QAR: 'ر.ق', OMR: 'ر.ع',
+  BHD: 'د.ب', IQD: 'د.ع', LBP: 'ل.ل', YER: 'ر.ي',
+  USD: '$', EUR: '€', GBP: '£', TRY: '₺'
+};
 function currencySymbol(code) {
-  return taxCountryMeta(code).symbol;
+  const c = String(code || '').toUpperCase();
+  return CURRENCY_SYMBOLS[c] || taxCountryMeta(c).symbol || c;
 }
 function taxCountryLabel(code) {
   return t(taxCountryMeta(code).label);
 }
 
+// العملة الأساسية الحالية للشركة (تُحدَّث من CommonMixin) — تُستخدم كافتراضي لعرض المبالغ
+let _baseSymbol = 'ر.س';
+function setBaseSymbol(s) { if (s) _baseSymbol = s; }
+
 const fmt = {
-  money(v, currency = t('ر.س')) {
+  money(v, currency) {
     const n = Number(v) || 0;
-    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+    const cur = currency !== undefined && currency !== null ? currency : _baseSymbol;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + cur;
   },
   moneyFor(v, code) {
     return fmt.money(v, currencySymbol(code));
@@ -347,8 +360,18 @@ const CommonMixin = {
     company: { type: Object, required: true },
     info: { type: Object, default: () => ({ settings: {}, active_fiscal_year: null, vat: null }) }
   },
+  created() { setBaseSymbol(currencySymbol(this.baseCurrency)); },
+  watch: {
+    baseCurrency(v) { setBaseSymbol(currencySymbol(v)); }
+  },
   computed: {
     fmt() { return fmt; },
+    baseCurrency() {
+      if (this.info && this.info.base_currency) return this.info.base_currency;
+      if (this.info && this.info.settings && this.info.settings.base_currency) return this.info.settings.base_currency;
+      return 'SAR';
+    },
+    baseSymbol() { return currencySymbol(this.baseCurrency); },
     typeIcon() { return typeIcon; },
     typeLabel() { return typeLabel; },
     accountTypeLabels() { return accountTypeLabels; },

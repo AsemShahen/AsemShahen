@@ -192,12 +192,18 @@ const JournalView = {
   mixins: [CommonMixin],
   data() {
     return {
-      entries: [], accounts: [], branches: [], loading: true, alert: null, filter: '', entryBranchFilter: '',
+      entries: [], accounts: [], branches: [], currencies: [], loading: true, alert: null, filter: '', entryBranchFilter: '',
       showModal: false, saving: false,
-      form: { date: new Date().toISOString().slice(0, 10), description: '', branch_id: '', lines: [] }
+      form: { date: new Date().toISOString().slice(0, 10), description: '', branch_id: '', currency: '', exchange_rate: 1, lines: [] }
     };
   },
   async created() { await this.load(); },
+  watch: {
+    'form.currency'(code) {
+      if (!code || code === this.baseCurrency) this.form.exchange_rate = 1;
+      else this.form.exchange_rate = this.rateFor(code);
+    }
+  },
   methods: {
     branchName(id) {
       const b = this.branches.find(x => Number(x.id) === Number(id));
@@ -205,20 +211,33 @@ const JournalView = {
     },
     async load() {
       try {
-        const [entries, accounts, branches] = await Promise.all([
+        const [entries, accounts, branches, curr] = await Promise.all([
           this.api(`/api/companies/${this.company.id}/journal`),
           this.api(`/api/companies/${this.company.id}/accounts`),
-          this.api(`/api/companies/${this.company.id}/branches`).catch(() => [])
+          this.api(`/api/companies/${this.company.id}/branches`).catch(() => []),
+          this.api(`/api/companies/${this.company.id}/currencies`).catch(() => null)
         ]);
         this.entries = entries;
         this.accounts = accounts.filter(a => !a.is_header);
         this.branches = branches || [];
+        this.currencies = (curr && curr.currencies) ? curr.currencies.filter(c => c.is_active) : [];
       } catch (e) { this.toast(e.message, 'error'); }
       finally { this.loading = false; }
     },
+    entryCurrency(code) {
+      if (!code || code === this.baseCurrency) return '';
+      const row = this.currencies.find(c => c.code === code);
+      return `${code} ${row ? row.symbol : ''}`;
+    },
+    rateFor(code) {
+      const c = String(code || '').toUpperCase();
+      if (c === this.baseCurrency) return 1;
+      const row = this.currencies.find(x => x.code === c);
+      return row ? Number(row.rate) || 1 : 1;
+    },
     openCreate() {
       const def = this.branches.find(b => b.is_default) || this.branches[0];
-      this.form = { date: new Date().toISOString().slice(0, 10), description: '', branch_id: def ? def.id : '', lines: [this.emptyLine(), this.emptyLine()] };
+      this.form = { date: new Date().toISOString().slice(0, 10), description: '', branch_id: def ? def.id : '', currency: this.baseCurrency, exchange_rate: 1, lines: [this.emptyLine(), this.emptyLine()] };
       this.showModal = true;
     },
     emptyLine() {
@@ -240,6 +259,8 @@ const JournalView = {
             date: this.form.date,
             description: this.form.description,
             branch_id: this.form.branch_id ? Number(this.form.branch_id) : undefined,
+            currency: this.form.currency || this.baseCurrency,
+            exchange_rate: Number(this.form.exchange_rate) || 1,
             lines: this.form.lines.map(l => ({ account_id: Number(l.account_id), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, detail: l.detail }))
           }
         });
@@ -354,7 +375,7 @@ const JournalView = {
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('الحسابات') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('النوع') }}</th><th></th></tr>
+              <tr><th>{{ t('رقم القيد') }}</th><th>{{ t('التاريخ') }}</th><th>{{ t('البيان') }}</th><th>{{ t('الفرع') }}</th><th>{{ t('العملة') }}</th><th>{{ t('الحسابات') }}</th><th>{{ t('مدين') }}</th><th>{{ t('دائن') }}</th><th>{{ t('النوع') }}</th><th></th></tr>
             </thead>
             <tbody>
               <template v-for="e in filteredEntries()" :key="e.id">
@@ -363,6 +384,10 @@ const JournalView = {
                   <td>{{ fmt.date(e.date) }}</td>
                   <td style="white-space:normal;max-width:260px;">{{ e.description }}</td>
                   <td>{{ branchName(e.branch_id) }}</td>
+                  <td>
+                    <span v-if="e.currency && e.currency !== baseCurrency" class="badge gray">{{ e.currency }} @ {{ e.exchange_rate }}</span>
+                    <span v-else class="muted">{{ baseCurrency }}</span>
+                  </td>
                   <td style="max-width:220px;white-space:normal;">
                     <div v-for="l in e.lines" :key="l.id" style="font-size:12px;">
                       <span class="muted">{{ l.code }}</span> {{ l.account_name || l.name }}
@@ -380,7 +405,7 @@ const JournalView = {
                   </td>
                 </tr>
               </template>
-              <tr v-if="!entries.length"><td colspan="9" class="muted">{{ t('لا توجد قيود بعد - أضف أول قيد') }}</td></tr>
+              <tr v-if="!entries.length"><td colspan="10" class="muted">{{ t('لا توجد قيود بعد - أضف أول قيد') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -399,6 +424,15 @@ const JournalView = {
             </select>
           </label>
           <label class="span2">{{ t('البيان') }} <input v-model.trim="form.description" :placeholder="t('شرح القيد...')"></label>
+          <label>{{ t('العملة') }}
+            <select v-model="form.currency">
+              <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.code }} - {{ c.name }}</option>
+              <option v-if="!currencies.some(c => c.code === baseCurrency)" :value="baseCurrency">{{ baseCurrency }}</option>
+            </select>
+          </label>
+          <label>{{ t('سعر الصرف مقابل {x}', { x: baseCurrency }) }}
+            <input type="number" step="0.000001" v-model.number="form.exchange_rate" :disabled="form.currency === baseCurrency">
+          </label>
         </div>
 
         <div class="entry-lines mt-2">
@@ -422,6 +456,7 @@ const JournalView = {
           <button class="btn btn-ghost" @click="addLine">+ {{ t('إضافة سطر') }}</button>
           <div class="flex">
             <span>{{ t('المجاميع:') }} {{ t('مدين') }} <strong class="monospace">{{ fmt.num(totalDebit()) }}</strong> / {{ t('دائن') }} <strong class="monospace">{{ fmt.num(totalCredit()) }}</strong></span>
+            <span v-if="form.currency && form.currency !== baseCurrency" class="chip">{{ t('المعادل:') }} {{ fmt.money((totalDebit()||0) * (Number(form.exchange_rate)||1), baseSymbol) }}</span>
             <span v-if="Math.abs(getBalance()) > 0.01" class="badge red">{{ t('الفرق:') }} {{ fmt.num(getBalance()) }} - {{ t('القيد غير متوازن') }}</span>
             <span v-else class="badge green">{{ t('متوازن ✓') }}</span>
           </div>
