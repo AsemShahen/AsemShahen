@@ -468,7 +468,7 @@ const InvoicesView = {
             <div>{{ t('الإجمالي قبل الضريبة:') }} <strong class="monospace">{{ fmt.moneyFor(taxable(), formCurrency) }}</strong></div>
             <div>{{ t('الضريبة ({rate}%):', { rate: form.vat_rate || 0 }) }} <strong class="monospace">{{ fmt.moneyFor(vatAmount(), formCurrency) }}</strong></div>
             <div style="font-size:16px;">{{ t('الإجمالي:') }} <strong class="monospace" style="color:var(--primary);">{{ fmt.moneyFor(total(), formCurrency) }}</strong></div>
-            <div v-if="formCurrency !== baseCurrency" class="muted" style="font-size:12px;">{{ t('المعادل بالعملة الأساسية:') }} <strong class="monospace">{{ fmt.money(baseTotal(), baseSymbol) }}</strong></div>
+            <div v-if="formCurrency !== baseCurrency" class="muted" style="font-size:12px;">{{ t('المعادل بالعملة الأساسية:') }} <strong class="monospace">{{ fmt.money(baseTotal, baseSymbol) }}</strong></div>
           </div>
         </div>
 

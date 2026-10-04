@@ -295,14 +295,14 @@ const SettingsView = {
     },
     async loadSyria() {
       try {
-        this.syria = await api(`/companies/${this.companyId}/syria-settings`);
+        this.syria = await this.api(`/api/companies/${this.company.id}/syria-settings`);
         this.syriaForm = { ...this.syria, active: !!this.syria.active };
       } catch (e) { this.toast(e.message, 'error'); }
     },
     async saveSyria() {
       this.savingSy = true;
       try {
-        await api(`/companies/${this.companyId}/syria-settings`, { method: 'PUT', body: this.syriaForm });
+        await this.api(`/api/companies/${this.company.id}/syria-settings`, { method: 'PUT', body: this.syriaForm });
         await this.loadSyria();
         this.toast('تم حفظ إعدادات الضريبة السورية', 'success');
       } catch (e) { this.toast(e.message, 'error'); }
@@ -310,7 +310,7 @@ const SettingsView = {
     },
     async loadCurrencies() {
       try {
-        const r = await api(`/companies/${this.companyId}/currencies`);
+        const r = await this.api(`/api/companies/${this.company.id}/currencies`);
         this.currencies = r.currencies || [];
         this.currenciesBase = r.base || 'SAR';
       } catch (e) { this.toast(e.message, 'error'); }
@@ -320,7 +320,7 @@ const SettingsView = {
       if (!f.code) { this.toast('أدخل رمز العملة (مثال: USD)', 'error'); return; }
       this.savingCur = true;
       try {
-        await api(`/companies/${this.companyId}/currencies`, { method: 'POST', body: f });
+        await this.api(`/api/companies/${this.company.id}/currencies`, { method: 'POST', body: f });
         this.toast('تمت إضافة العملة');
         this.currencyForm = { code: '', name: '', symbol: '', rate: 1 };
         await this.loadCurrencies();
@@ -329,14 +329,14 @@ const SettingsView = {
     },
     async saveCurrency(c) {
       try {
-        await api(`/companies/${this.companyId}/currencies`, { method: 'POST', body: { code: c.code, name: c.name, symbol: c.symbol, rate: c.rate, is_active: c.is_active } });
+        await this.api(`/api/companies/${this.company.id}/currencies`, { method: 'POST', body: { code: c.code, name: c.name, symbol: c.symbol, rate: c.rate, is_active: c.is_active } });
         this.toast('تم تحديث سعر الصرف');
         await this.loadCurrencies();
       } catch (e) { this.toast(e.message, 'error'); }
     },
     async setBaseCurrency(code) {
       try {
-        const r = await api(`/companies/${this.companyId}/currencies/base`, { method: 'PUT', body: { code } });
+        const r = await this.api(`/api/companies/${this.company.id}/currencies/base`, { method: 'PUT', body: { code } });
         this.currencies = r.currencies || [];
         this.currenciesBase = r.base;
         this.toast('تم تعيين العملة الأساسية');
@@ -345,7 +345,7 @@ const SettingsView = {
     async fetchRates() {
       this.fetchingRates = true;
       try {
-        const r = await api(`/companies/${this.companyId}/currencies/fetch-rates`, { method: 'POST' });
+        const r = await this.api(`/api/companies/${this.company.id}/currencies/fetch-rates`, { method: 'POST' });
         this.currencies = r.currencies || [];
         this.currenciesBase = r.base;
         this.toast(r.ok ? `تم جلب أسعار الصرف (${(r.updated || []).length} عملة)` : `تعذّر جلب الأسعار: ${r.error || ''}`, r.ok ? 'success' : 'error');
@@ -356,7 +356,7 @@ const SettingsView = {
       if (code === this.currenciesBase) { this.toast('لا يمكن حذف العملة الأساسية', 'error'); return; }
       if (!confirm(t('حذف العملة {code}؟', { code }))) return;
       try {
-        await api(`/companies/${this.companyId}/currencies/${code}`, { method: 'DELETE' });
+        await this.api(`/api/companies/${this.company.id}/currencies/${code}`, { method: 'DELETE' });
         this.toast('تم حذف العملة');
         await this.loadCurrencies();
       } catch (e) { this.toast(e.message, 'error'); }
