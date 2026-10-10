@@ -57,6 +57,15 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// ---------- قفل الصيانة: يمنع الطلبات المتزامنة أثناء استعادة/ضغط قاعدة البيانات ----------
+let dbMaintenance = false;
+app.use('/api', (req, res, next) => {
+  if (dbMaintenance && !req.path.includes('/db-tools')) {
+    return res.status(503).json({ error: 'النظام في وضع الصيانة، حاول لاحقاً' });
+  }
+  next();
+});
+
 // ---------- أدوات التحقق من الصلاحيات ----------
 function windowPerm(windowKey, action = 'view') {
   return (req, res, next) => {
@@ -114,7 +123,16 @@ function invPerm(action) {
 // الفرع المطلوب للتصفية (فقط عند اختياره صراحةً)
 function filterBranchId(req) {
   const b = req.query && req.query.branch;
-  return (b === undefined || b === null || b === '' || b === 'all') ? null : Number(b);
+  if (b === undefined || b === null || b === '' || b === 'all') return null;
+  const n = Number(b);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// تحديد حدّ أعلى آمن لعدد السجلات (لمنع limit السالب = بلا حد)
+function clampLimit(v, def = 300, max = 2000) {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return def;
+  return Math.min(n, max);
 }
 
 // الفرع المستخدم عند إنشاء سجل جديد: فرع الطلب ثم فرع المستخدم ثم الفرع الافتراضي
@@ -324,16 +342,25 @@ app.delete('/api/users/:id', platformOnly, (req, res) => {
 
 // ==================== الشركات ====================
 app.get('/api/companies', (req, res) => {
-  const companies = listCompanies().map(c => {
-    const db = accounting.getDb(c.id);
-    const fy = db.prepare(`SELECT * FROM fiscal_years ORDER BY id DESC LIMIT 1`).get();
-    const counts = db.prepare(`SELECT (SELECT COUNT(*) FROM journal_entries) AS entries, (SELECT COUNT(*) FROM invoices) AS invoices`).get();
-    db.close();
-    return { ...c, current_fiscal_year: fy, counts };
-  });
   // مدير المنصة يرى كل الشركات، وحساب الشركة يرى شركته فقط
-  const visible = companies.filter(c => usersLib.userHasCompany(req.user, c.id));
-  res.json({ companies: visible });
+  const companies = listCompanies()
+    .filter(c => usersLib.userHasCompany(req.user, c.id))
+    .map(c => {
+      // فتح قاعدة الشركة بشكل محمي حتى لا يُعطِّل تعطُّل قاعدة واحدة القائمة كاملة
+      try {
+        const db = accounting.getDb(c.id);
+        try {
+          const fy = db.prepare(`SELECT * FROM fiscal_years ORDER BY id DESC LIMIT 1`).get();
+          const counts = db.prepare(`SELECT (SELECT COUNT(*) FROM journal_entries) AS entries, (SELECT COUNT(*) FROM invoices) AS invoices`).get();
+          return { ...c, current_fiscal_year: fy, counts };
+        } finally {
+          db.close();
+        }
+      } catch (e) {
+        return { ...c, current_fiscal_year: null, counts: { entries: 0, invoices: 0 }, db_error: true };
+      }
+    });
+  res.json({ companies });
 });
 
 app.get('/api/company-types', (req, res) => {
@@ -483,13 +510,23 @@ app.put('/api/companies/:companyId/accounts/:accountId', windowPerm('accounts', 
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const db = accounting.getDb(company.id);
-  const b = req.body;
-  db.prepare(`
-    UPDATE accounts SET name=?, type=?, category=?, normal_side=?, vat_applicable=? WHERE id=?
-  `).run(b.name || '', b.type || 'asset', b.category || 'other', b.normal_side || 'debit', b.vat_applicable !== undefined ? (b.vat_applicable ? 1 : 0) : 1, req.params.accountId);
-  const acct = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.accountId);
-  db.close();
-  res.json(acct);
+  try {
+    const b = req.body || {};
+    const current = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.accountId);
+    if (!current) return res.status(404).json({ error: 'الحساب غير موجود' });
+    // لا يُسمح بتغيير طبيعة الحسابات النظامية (قد يكسر التقارير والعملة)
+    const type = current.is_system ? current.type : (b.type || current.type);
+    const normal_side = current.is_system ? current.normal_side : (b.normal_side || current.normal_side);
+    db.prepare(`UPDATE accounts SET name=?, type=?, category=?, normal_side=?, vat_applicable=? WHERE id=?`)
+      .run(b.name || current.name, type, b.category || current.category, normal_side,
+        b.vat_applicable !== undefined ? (b.vat_applicable ? 1 : 0) : current.vat_applicable, req.params.accountId);
+    const acct = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.accountId);
+    res.json(acct);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  } finally {
+    db.close();
+  }
 });
 
 // ==================== قيود اليومية ====================
@@ -537,10 +574,24 @@ app.delete('/api/companies/:companyId/journal/:entryId', windowPerm('journal', '
   const entry = db.prepare('SELECT * FROM journal_entries WHERE id = ?').get(req.params.entryId);
   if (!entry) { db.close(); return res.status(404).json({ error: 'القيد غير موجود' }); }
   if (entry.is_closing || entry.is_opening) { db.close(); return res.status(400).json({ error: 'لا يمكن حذف قيود الإقفال أو الافتتاح' }); }
-  db.prepare('DELETE FROM journal_lines WHERE entry_id = ?').run(entry.id);
-  db.prepare('DELETE FROM journal_entries WHERE id = ?').run(entry.id);
-  db.close();
-  res.json({ ok: true });
+  // القيود المُنشأة تلقائياً من فاتورة/دفعة/تصنيع/جرد لا تُحذف مباشرة (تُعالج من مصدرها)
+  const autoRefs = ['sale', 'purchase', 'payment', 'manufacturing_issue', 'manufacturing_expense', 'manufacturing_complete', 'restaurant_sale', 'stock_count', 'closing', 'opening'];
+  if (autoRefs.includes(entry.ref_type)) {
+    db.close();
+    return res.status(400).json({ error: 'لا يمكن حذف قيد مُنشأ تلقائياً من مستند آخر؛ احذف المستند المصدر بدلاً من ذلك' });
+  }
+  try {
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM journal_lines WHERE entry_id = ?').run(entry.id);
+      db.prepare('DELETE FROM journal_entries WHERE id = ?').run(entry.id);
+    });
+    tx();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  } finally {
+    db.close();
+  }
 });
 
 // ==================== دليل الأستاذ ====================
@@ -977,11 +1028,16 @@ app.post('/api/companies/:companyId/currencies/fetch-rates', companyAdminOnly, a
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const db = accounting.getDb(company.id);
-  const base = currencyLib.getBaseCurrency(db);
-  const result = await currencyLib.fetchRates(db);
-  const currencies = currencyLib.listCurrencies(db);
-  db.close();
-  res.json({ ...result, base, base_symbol: currencyLib.symbolFor(base), currencies });
+  try {
+    const base = currencyLib.getBaseCurrency(db);
+    const result = await currencyLib.fetchRates(db);
+    const currencies = currencyLib.listCurrencies(db);
+    res.json({ ...result, base, base_symbol: currencyLib.symbolFor(base), currencies });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  } finally {
+    try { db.close(); } catch (_) { /* لا شيء */ }
+  }
 });
 
 app.delete('/api/companies/:companyId/currencies/:code', companyAdminOnly, (req, res) => {
@@ -1100,8 +1156,15 @@ app.post('/api/companies/:companyId/whatsapp/send', waPerm, async (req, res) => 
 // ==================== نظام المحادثة الداخلية ====================
 function chatAccess(req, res, next) {
   const companyId = Number(req.params.companyId);
-  if (usersLib.canAccessCompany(req.user, companyId)) return next();
-  return res.status(403).json({ error: 'ليست لديك صلاحية للوصول إلى محادثات هذه الشركة' });
+  if (!usersLib.canAccessCompany(req.user, companyId)) {
+    return res.status(403).json({ error: 'ليست لديك صلاحية للوصول إلى محادثات هذه الشركة' });
+  }
+  // حساب المنصة للعرض فقط: يُمنع من عمليات الكتابة في المحادثة
+  const readOnly = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+  if (!readOnly && usersLib.isPlatform(req.user)) {
+    return res.status(403).json({ error: 'حساب المنصة للعرض فقط ولا يمكنه تعديل المحادثات' });
+  }
+  return next();
 }
 
 // فتح قاعدة بيانات الشركة وتسجيل العضو تلقائياً مع إرجاع سياق العمل
@@ -1283,14 +1346,14 @@ app.get('/api/companies/:companyId/chat/files/:messageId', chatAccess, (req, res
   if (!ctx) return;
   try {
     const m = ctx.db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(Number(req.params.messageId));
-    if (!m) return res.status(404).json({ error: 'الرسالة غير موجودة' });
+    if (!m) { closeChatCtx(ctx); return res.status(404).json({ error: 'الرسالة غير موجودة' }); }
     const fp = chatLib.uploadFilePath(ctx.company.id, m);
-    if (!fp || !fs.existsSync(fp)) return res.status(404).json({ error: 'الملف غير موجود' });
+    if (!fp || !fs.existsSync(fp)) { closeChatCtx(ctx); return res.status(404).json({ error: 'الملف غير موجود' }); }
     res.setHeader('Content-Type', m.file_mime || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(m.file_name)}"`);
+    closeChatCtx(ctx);
     const st = fs.createReadStream(fp);
     st.pipe(res);
-    ctx.db.close();
   } catch (e) {
     closeChatCtx(ctx);
     res.status(400).json({ error: e.message });
@@ -1448,14 +1511,22 @@ app.post('/api/companies/:companyId/fiscal-years', windowPerm('closing', 'edit')
   try {
     const active = db.prepare(`SELECT * FROM fiscal_years WHERE status = 'open' ORDER BY id DESC LIMIT 1`).get();
     if (!active) { db.close(); return res.status(400).json({ error: 'لا توجد سنة مالية مفتوحة' }); }
-    const name = req.body.name || accounting.nextFiscalYear(db);
-    const start = req.body.start_date || `${name}-01-01`;
-    const end = req.body.end_date || `${Number(name) + 1}-01-01`;
-    const info = db.prepare(`INSERT INTO fiscal_years (name, start_date, end_date, status, created_at) VALUES (?, ?, ?, 'open', ?)`)
-      .run(String(name), start, end, new Date().toISOString());
-    db.prepare(`UPDATE fiscal_years SET status = 'closed', closed_at = ? WHERE id = ?`).run(new Date().toISOString(), active.id);
+    const name = String(req.body.name || accounting.nextFiscalYear(db));
+    const numeric = /^\d{4}$/.test(name);
+    const start = req.body.start_date || (numeric ? `${name}-01-01` : null);
+    const end = req.body.end_date || (numeric ? `${Number(name) + 1}-01-01` : null);
+    if (!start || !end) throw new Error('يرجى تحديد تاريخ بداية ونهاية السنة المالية بصيغة صحيحة');
+    if (start >= end) throw new Error('تاريخ نهاية السنة المالية يجب أن يكون بعد تاريخ بدايتها');
+    let newId = null;
+    const tx = db.transaction(() => {
+      const info = db.prepare(`INSERT INTO fiscal_years (name, start_date, end_date, status, created_at) VALUES (?, ?, ?, 'open', ?)`)
+        .run(name, start, end, new Date().toISOString());
+      db.prepare(`UPDATE fiscal_years SET status = 'closed', closed_at = ? WHERE id = ?`).run(new Date().toISOString(), active.id);
+      newId = info.lastInsertRowid;
+    });
+    tx();
     db.close();
-    res.json({ id: info.lastInsertRowid });
+    res.json({ id: newId });
   } catch (e) {
     db.close();
     res.status(400).json({ error: e.message });
@@ -1737,7 +1808,7 @@ app.delete('/api/companies/:companyId/restaurant/recipes/:recipeId', windowPerm(
 app.get('/api/companies/:companyId/restaurant/production', windowPerm('production', 'view'), (req, res) => {
   const ctx = getCompanyDb(req, res);
   if (!ctx) return;
-  res.json(restaurantLib.listProductionOrders(ctx.db, { productId: req.query.product_id, limit: Number(req.query.limit) || 300 }));
+  res.json(restaurantLib.listProductionOrders(ctx.db, { productId: req.query.product_id, limit: clampLimit(req.query.limit, 300) }));
   ctx.db.close();
 });
 
@@ -1872,7 +1943,7 @@ app.get('/api/companies/:companyId/manufacturing/orders', windowPerm('mfg-orders
   try {
     res.json(manufacturingLib.listOrders(ctx.db, {
       status: req.query.status, productId: req.query.product_id, search: req.query.search,
-      limit: Number(req.query.limit) || 300
+      limit: clampLimit(req.query.limit, 300)
     }));
   } catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
@@ -1953,7 +2024,7 @@ app.get('/api/companies/:companyId/manufacturing/expenses', windowPerm('mfg-expe
   try {
     res.json(manufacturingLib.listExpenses(ctx.db, {
       orderId: req.query.order_id, type: req.query.type, from: req.query.from, to: req.query.to,
-      limit: Number(req.query.limit) || 500
+      limit: clampLimit(req.query.limit, 500)
     }));
   } catch (e) { res.status(400).json({ error: e.message }); }
   finally { ctx.db.close(); }
@@ -2686,7 +2757,7 @@ app.get('/api/companies/:companyId/hotel/bookings', windowPerm('hotel-bookings',
   if (!ctx) return;
   res.json(hotelLib.listBookings(ctx.db, {
     status: req.query.status, roomId: req.query.room_id, search: req.query.search,
-    from: req.query.from, to: req.query.to, limit: Number(req.query.limit) || 500
+    from: req.query.from, to: req.query.to, limit: clampLimit(req.query.limit, 500)
   }));
   ctx.db.close();
 });
@@ -2895,8 +2966,10 @@ app.get('/api/companies/:companyId/db-tools/backups/:filename', companyAdminOnly
 app.post('/api/companies/:companyId/db-tools/restore', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  dbMaintenance = true;
   try { res.json(dbTools.restoreFromBackup(company.id, req.body && req.body.filename)); }
   catch (e) { res.status(400).json({ error: e.message }); }
+  finally { dbMaintenance = false; }
 });
 
 // استعادة من ملف يُرفع مباشرة (application/octet-stream)
@@ -2905,42 +2978,64 @@ app.post('/api/companies/:companyId/db-tools/restore-upload', companyAdminOnly, 
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
   const chunks = [];
   let size = 0;
+  let aborted = false;
+  dbMaintenance = true;
   req.on('data', c => {
     size += c.length;
-    if (size > 30 * 1024 * 1024) { req.destroy(); return res.status(400).json({ error: 'حجم الملف يتجاوز الحد الأقصى (30 ميغابايت)' }); }
+    if (size > 30 * 1024 * 1024) {
+      aborted = true;
+      if (!res.headersSent) res.status(400).json({ error: 'حجم الملف يتجاوز الحد الأقصى (30 ميغابايت)' });
+      req.destroy();
+      return;
+    }
     chunks.push(c);
   });
   req.on('end', () => {
+    if (aborted) { dbMaintenance = false; return; }
+    const tmp = path.join(dbTools.BACKUP_DIR, `.restore_tmp_${company.id}_${Date.now()}.db`);
     try {
-      const tmp = path.join(dbTools.BACKUP_DIR, `.restore_tmp_${company.id}_${Date.now()}.db`);
       fs.writeFileSync(tmp, Buffer.concat(chunks));
       const result = dbTools.restoreFromUpload(company.id, tmp);
-      fs.unlinkSync(tmp);
       res.json(result);
     } catch (e) {
-      res.status(400).json({ error: e.message });
+      if (!res.headersSent) res.status(400).json({ error: e.message });
+    } finally {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) { /* لا شيء */ }
+      dbMaintenance = false;
     }
   });
-  req.on('error', () => { res.status(400).json({ error: 'فشل في قراءة الملف المرفوع' }); });
+  req.on('error', () => {
+    dbMaintenance = false;
+    if (aborted || res.headersSent) return;
+    res.status(400).json({ error: 'فشل في قراءة الملف المرفوع' });
+  });
 });
 
 app.post('/api/companies/:companyId/db-tools/compress', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  dbMaintenance = true;
   try { res.json(dbTools.compress(company.id)); }
   catch (e) { res.status(400).json({ error: e.message }); }
+  finally { dbMaintenance = false; }
 });
 
 app.post('/api/companies/:companyId/db-tools/repair', companyAdminOnly, (req, res) => {
   const company = getCompany(Number(req.params.companyId));
   if (!company) return res.status(404).json({ error: 'الشركة غير موجودة' });
+  dbMaintenance = true;
   try { res.json(dbTools.repair(company.id)); }
   catch (e) { res.status(400).json({ error: e.message }); }
+  finally { dbMaintenance = false; }
 });
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: err.message });
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  // لا نُسرِّب تفاصيل الأخطاء الداخلية (SQL/مسارات) للعميل عند أخطاء الخادم
+  const msg = status >= 500 ? 'حدث خطأ في الخادم، حاول لاحقاً' : (err.message || 'طلب غير صالح');
+  res.status(status).json({ error: msg });
 });
 
 usersLib.ensureDefaultAdmin();
