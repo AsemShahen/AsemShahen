@@ -10,7 +10,7 @@ const InvoicesView = {
       invoices: [], parties: [], methods: [], products: [], warehouses: [], branches: [], currencies: [],
       loading: true, alert: null, filter: '', branchFilter: '', barcodeInput: '',
       showModal: false, saving: false, payModal: null, paying: false,
-      detail: null, qrUrl: '', detailLoading: false,
+      detail: null, qrUrl: '', detailLoading: false, detailReq: 0,
       form: {}
     };
   },
@@ -146,9 +146,11 @@ const InvoicesView = {
     vatAmount() { return this.taxable() * (Number(this.form.vat_rate) || 0) / 100; },
     total() { return this.taxable() + this.vatAmount(); },
     canSave() {
-      return this.form.party_id && this.form.lines.some(l => l.description && (Number(l.unit_price) || 0) > 0) && this.total() > 0;
+      return !!(this.form.party_id && this.form.lines.some(l => l.description && (Number(l.unit_price) || 0) > 0) && this.total() > 0);
     },
     async save() {
+      if (this.saving) return;
+      if (!this.canSave()) { this.toast(t('أكمل بيانات الفاتورة أولاً'), 'error'); return; }
       this.saving = true;
       try {
         const body = {
@@ -188,6 +190,7 @@ const InvoicesView = {
     },
     remaining(inv) { return inv.total - inv.paid_amount; },
     async openDetail(inv) {
+      const reqId = ++this.detailReq;
       this.detailLoading = true;
       this.detail = { ...inv, zatca: null, jo: null, eg: null };
       this.qrUrl = '';
@@ -195,25 +198,28 @@ const InvoicesView = {
         const provider = fmt.einvoiceProvider(inv.tax_country);
         if (provider === 'jofotara') {
           const j = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/jofotara`);
+          if (reqId !== this.detailReq) return;
           this.detail.jo = j;
           if (j.jo_qr && typeof QRCode !== 'undefined') {
             try { this.qrUrl = await QRCode.toDataURL(j.jo_qr, { width: 220, margin: 1 }); } catch (e) { /* QR اختياري */ }
           }
         } else if (provider === 'egypt') {
           const g = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/egypt`);
+          if (reqId !== this.detailReq) return;
           this.detail.eg = g;
           if (g.eg_qr && typeof QRCode !== 'undefined') {
             try { this.qrUrl = await QRCode.toDataURL(g.eg_qr, { width: 220, margin: 1 }); } catch (e) { /* QR اختياري */ }
           }
         } else if (provider === 'zatca') {
           const z = await this.api(`/api/companies/${this.company.id}/invoices/${inv.id}/zatca`);
+          if (reqId !== this.detailReq) return;
           this.detail.zatca = z;
           if (z.qr_data && typeof QRCode !== 'undefined') {
             this.qrUrl = await QRCode.toDataURL(z.qr_data, { width: 220, margin: 1 });
           }
         }
-      } catch (e) { this.toast(e.message, 'error'); }
-      finally { this.detailLoading = false; }
+      } catch (e) { if (reqId === this.detailReq) this.toast(e.message, 'error'); }
+      finally { if (reqId === this.detailReq) this.detailLoading = false; }
     },
     downloadXml() {
       if (!this.detail || !this.detail.zatca || !this.detail.zatca.xml_data) return;
@@ -474,7 +480,7 @@ const InvoicesView = {
 
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="showModal = false">{{ t('إلغاء') }}</button>
-          <button class="btn btn-primary" @click="save" :disabled="!canSave || saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الفاتورة') }}</button>
+          <button class="btn btn-primary" @click="save" :disabled="!canSave() || saving">{{ saving ? t('جارٍ الحفظ...') : t('حفظ الفاتورة') }}</button>
         </div>
       </div>
     </div>

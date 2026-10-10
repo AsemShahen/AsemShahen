@@ -134,7 +134,7 @@ const ManufacturingBomsView = {
   data() {
     return {
       boms: [], products: [], warehouses: [], meta: {}, loading: true, alert: null, search: '',
-      showModal: false, editing: null, saving: false, costPreview: null,
+      showModal: false, editing: null, saving: false, costPreview: null, bomReq: 0,
       form: { code: '', name: '', product_id: '', warehouse_id: '', yield_qty: 1, version: '1', notes: '', is_active: true, lines: [] }
     };
   },
@@ -188,6 +188,7 @@ const ManufacturingBomsView = {
       return qty * this.productPrice(l.component_product_id);
     },
     openCreate() {
+      ++this.bomReq;
       this.editing = null;
       this.form = { code: '', name: '', product_id: '', warehouse_id: '', yield_qty: 1, version: '1', notes: '', is_active: true, lines: [] };
       if (this.warehouses.length) this.form.warehouse_id = this.warehouses[0].id;
@@ -195,6 +196,7 @@ const ManufacturingBomsView = {
       this.showModal = true;
     },
     openEdit(b) {
+      const reqId = ++this.bomReq;
       this.editing = b;
       this.form = {
         code: b.code, name: b.name, product_id: b.product_id, warehouse_id: b.warehouse_id || '',
@@ -202,16 +204,18 @@ const ManufacturingBomsView = {
         is_active: !!b.is_active, lines: []
       };
       this.api(`/api/companies/${this.company.id}/manufacturing/boms/${b.id}`).then(full => {
+        if (reqId !== this.bomReq) return;
         this.form.lines = (full.lines || []).map(l => ({
           component_product_id: l.component_product_id, qty: l.qty, wastage_pct: l.wastage_pct, notes: l.notes || ''
         }));
         if (!this.form.lines.length) this.addLine();
-      }).catch(e => this.toast(e.message, 'error'));
+      }).catch(e => { if (reqId === this.bomReq) this.toast(e.message, 'error'); });
       this.showModal = true;
     },
     addLine() { this.form.lines.push({ component_product_id: '', qty: 1, wastage_pct: 0, notes: '' }); },
     removeLine(i) { this.form.lines.splice(i, 1); },
     async save() {
+      if (this.saving) return;
       this.saving = true;
       try {
         const payload = { ...this.form, lines: this.form.lines.filter(l => l.component_product_id) };
